@@ -149,8 +149,8 @@ class JoyconRobotics:
                  limit_dof: bool = False,
                  glimit: list = [[0.125, -0.4,  0.046, -3.1, -1.5, -1.57], 
                                  [0.380,  0.4,  0.23,  3.1,  1.5,  1.57]],
-                 offset_position_m: list = [0.0, 0.0, 0.0], # just use the position and yaw
-                 offset_euler_rad: list = [0.0, 0.0, 0.0], # adjust the orientation
+                 home_position: list = [0.0, 0.0, 0.0], # just use the position and yaw
+                 home_euler_ard: list = [0.0, 0.0, 0.0], # adjust the orientation
                  euler_reverse: list = [1, 1, 1], # -1 reverse
                  direction_reverse: list = [1, 1, 1], # -1 reverse
                  dof_speed: list = [1,1,1,1,1,1],
@@ -194,18 +194,18 @@ class JoyconRobotics:
         self.gripper_state = gripper_state # Increase indicates open
         self.gripper_limit = gripper_limit.copy()
         self.gripper_speed = gripper_speed
-        self.position = offset_position_m.copy()
-        self.orientation_rad = offset_euler_rad.copy()
+        self.position = home_position.copy()
+        self.orientation_rad = home_euler_ard.copy()
         self.yaw_diff = 0.0
         
-        self.offset_position_m = offset_position_m.copy()
-        self.posture = offset_position_m.copy()
+        self.home_position = home_position.copy()
+        self.posture = home_position.copy()
         
         self.translation_frame = translation_frame
         self.if_limit_dof = limit_dof
         self.dof_speed = dof_speed.copy()
         self.glimit = glimit
-        self.offset_euler_rad = offset_euler_rad
+        self.home_euler_ard = home_euler_ard
         self.euler_reverse = euler_reverse
         self.direction_reverse = direction_reverse
         # Start the thread to read inputs
@@ -224,7 +224,11 @@ class JoyconRobotics:
         self.thread.start()
         
     def disconnect(self):
+        self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
         self.joycon._close()
+        print("Joycon disconnected")
     
     def reset_joycon(self):
         print(f"\033[33mcalibrating(2 seconds)..., please place it horizontally on the desktop.\033[0m")
@@ -347,7 +351,7 @@ class JoyconRobotics:
         self.orientation_rad = self.orientation_sensor.update(self.gyro.gyro_in_rad[0], self.gyro.accel_in_g[0])
         
         for i in range(3): # deal with offset and reverse
-            self.orientation_rad[i] = (self.orientation_rad[i] + self.offset_euler_rad[i]) * self.euler_reverse[i]
+            self.orientation_rad[i] = (self.orientation_rad[i] + self.home_euler_ard[i]) * self.euler_reverse[i]
             
         if self.if_limit_dof:
             self.check_limits_orientation()
@@ -355,9 +359,9 @@ class JoyconRobotics:
         return self.orientation_rad
     
     def calibrate_yaw(self):
-        if self.orientation_rad[2] > self.offset_euler_rad[2] + 0.02 : # * self.dof_speed[5]:
+        if self.orientation_rad[2] > self.home_euler_ard[2] + 0.02 : # * self.dof_speed[5]:
             self.yaw_diff = self.yaw_diff + (0.01 * self.dof_speed[5])  
-        elif self.orientation_rad[2] < self.offset_euler_rad[2] - 0.02 : # * self.dof_speed[5]:
+        elif self.orientation_rad[2] < self.home_euler_ard[2] - 0.02 : # * self.dof_speed[5]:
             self.yaw_diff = self.yaw_diff - (0.01 * self.dof_speed[5])  
         else:
             self.yaw_diff = self.yaw_diff
@@ -372,23 +376,23 @@ class JoyconRobotics:
             self.orientation_sensor.set_yaw_diff(self.yaw_diff)
     
     def go_to_home(self):
-        if self.position[0] > self.offset_position_m[0] + 0.002: 
+        if self.position[0] > self.home_position[0] + 0.002: 
             self.position[0] = self.position[0] - 0.001 * self.dof_speed[0] * 2.0
-        elif self.position[0] < self.offset_position_m[0] - 0.002:
+        elif self.position[0] < self.home_position[0] - 0.002:
             self.position[0] = self.position[0] + 0.001 * self.dof_speed[0] * 2.0
         else:
             self.position[0] = self.position[0]
         
-        if self.position[1] > self.offset_position_m[1] + 0.002: 
+        if self.position[1] > self.home_position[1] + 0.002: 
             self.position[1] = self.position[1] - 0.001 * self.dof_speed[1] * 2.0
-        elif self.position[1] < self.offset_position_m[1] - 0.002:
+        elif self.position[1] < self.home_position[1] - 0.002:
             self.position[1] = self.position[1] + 0.001 * self.dof_speed[1] * 2.0
         else:
             self.position[1] = self.position[1]
         
-        if self.position[2] > self.offset_position_m[2] + 0.002: 
+        if self.position[2] > self.home_position[2] + 0.002: 
             self.position[2] = self.position[2] - 0.001 * self.dof_speed[2] * 2.0
-        elif self.position[2] < self.offset_position_m[2] - 0.002:
+        elif self.position[2] < self.home_position[2] - 0.002:
             self.position[2] = self.position[2] + 0.001 * self.dof_speed[2] * 2.0
         else:
             self.position[2] = self.position[2]
@@ -396,7 +400,6 @@ class JoyconRobotics:
         if self.if_limit_dof:
             self.check_limits_position()
         self.calibrate_yaw()
-        
 
     def update(self):
         roll, pitch, yaw = self.update_orientation()
@@ -460,8 +463,8 @@ class JoyconRobotics:
     def set_position(self, set_position):
         # self.x, self.y, self.z = set_position
         self.position = set_position
-        print('set position complect.')
-        
+        return
+
     def close_horizontal_stick(self):
         # mark horizontal stick as closed
         self._horizontal_stick_closed = True
@@ -497,10 +500,9 @@ class JoyconRobotics:
         # glimit = [x_speed, y_speed, z_speed, _, _, yaw_speed]
         self.dof_speed = dof_speed
         return
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+

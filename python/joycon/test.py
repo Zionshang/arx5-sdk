@@ -7,7 +7,6 @@ joyconrobotics_right = JoyconRobotics(
     translation_frame="local",
     direction_reverse=[1, 1, 1],
     euler_reverse=[-1, -1, 1],
-    offset_position_m=[0, 0, 0],
     limit_dof=True,
     glimit=[[0.0, -0.5, -0.5, -1.3, -1.3, -1.3], 
             [0.5, 0.5, 0.5, 1.3, 1.3, 1.3]],
