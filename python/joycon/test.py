@@ -8,8 +8,7 @@ joyconrobotics_right = JoyconRobotics(
     direction_reverse=[1, 1, 1],
     euler_reverse=[-1, -1, 1],
     limit_dof=True,
-    glimit=[[0.0, -0.5, -0.5, -1.3, -1.3, -1.3], 
-            [0.5, 0.5, 0.5, 1.3, 1.3, 1.3]],
+    glimit=[[0.0, -0.5, -0.5, -1.3, -1.3, -1.3], [0.5, 0.5, 0.5, 1.3, 1.3, 1.3]],
     gripper_limit=[0.0, 0.8],
 )
 
@@ -25,7 +24,7 @@ while True:  # continuously get data until user interrupts
     if control_button == 10:
         break
     viz.update(pose)
-    print(f"{gripper=}")
+    joyconrobotics_right.listen_button("x", True)
     time.sleep(0.01)
 
 viz.close()
