@@ -1,11 +1,17 @@
 #include "app/cartesian_controller.h"
 #include "app/common.h"
+#include "hardware/can_hardware.h"
 #include <chrono>
 #include <csignal>
 
 using namespace arx;
 
-Arx5CartesianController *arx5_cartesian_controller = new Arx5CartesianController("L5", "can0");
+RobotConfig g_robot_config = RobotConfigFactory::get_instance().get_config("L5");
+ControllerConfig g_controller_config =
+    ControllerConfigFactory::get_instance().get_config("cartesian_controller", g_robot_config.joint_dof);
+std::shared_ptr<IHardwareInterface> g_hw = std::make_shared<CanHardware>("can0", g_robot_config);
+Arx5CartesianController *arx5_cartesian_controller =
+    new Arx5CartesianController(g_robot_config, g_controller_config, g_hw);
 
 void signal_handler(int signal)
 {

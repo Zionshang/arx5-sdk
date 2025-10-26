@@ -3,7 +3,7 @@
 #include "app/common.h"
 #include "app/config.h"
 #include "app/solver.h"
-#include "hardware/arx_can.h"
+#include "hardware/hardware_interface.h"
 #include "utils.h"
 #include <chrono>
 #include <memory>
@@ -19,7 +19,9 @@ namespace arx
 class Arx5ControllerBase // parent class for the other two controllers
 {
   public:
-    Arx5ControllerBase(RobotConfig robot_config, ControllerConfig controller_config, std::string interface_name);
+    // Construct with an already created hardware interface implementation
+    Arx5ControllerBase(RobotConfig robot_config, ControllerConfig controller_config,
+                       std::shared_ptr<IHardwareInterface> hw);
     ~Arx5ControllerBase();
     JointState get_joint_cmd();
     JointState get_joint_state();
@@ -47,7 +49,7 @@ class Arx5ControllerBase // parent class for the other two controllers
     Gain gain_{robot_config_.joint_dof};
     // bool prev_gripper_updated_ = false; // Declaring here leads to segfault
 
-    ArxCan can_handle_;
+    std::shared_ptr<IHardwareInterface> hw_;
     std::shared_ptr<spdlog::logger> logger_;
     std::thread background_send_recv_thread_;
 

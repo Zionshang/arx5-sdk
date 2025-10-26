@@ -5,7 +5,7 @@
 #include "app/config.h"
 #include "app/controller_base.h"
 #include "app/solver.h"
-#include "hardware/arx_can.h"
+#include "hardware/hardware_interface.h"
 #include "utils.h"
 
 #include <chrono>
@@ -22,8 +22,10 @@ namespace arx
 class Arx5CartesianController : public Arx5ControllerBase
 {
   public:
-    Arx5CartesianController(RobotConfig robot_config, ControllerConfig controller_config, std::string interface_name);
-    Arx5CartesianController(std::string model, std::string interface_name);
+    // New constructors that take an injected hardware interface
+    Arx5CartesianController(RobotConfig robot_config, ControllerConfig controller_config,
+                            std::shared_ptr<IHardwareInterface> hw);
+    Arx5CartesianController(std::string model, std::shared_ptr<IHardwareInterface> hw);
 
     void set_eef_cmd(EEFState new_cmd);
     void set_eef_traj(std::vector<EEFState> new_traj);

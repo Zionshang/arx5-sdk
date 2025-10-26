@@ -4,7 +4,7 @@
 #include "app/config.h"
 #include "app/controller_base.h"
 #include "app/solver.h"
-#include "hardware/arx_can.h"
+#include "hardware/hardware_interface.h"
 #include "utils.h"
 #include <chrono>
 #include <memory>
@@ -21,8 +21,10 @@ namespace arx
 class Arx5JointController : public Arx5ControllerBase
 {
   public:
-    Arx5JointController(RobotConfig robot_config, ControllerConfig controller_config, std::string interface_name);
-    Arx5JointController(std::string model, std::string interface_name);
+    // New constructors that take an injected hardware interface
+    Arx5JointController(RobotConfig robot_config, ControllerConfig controller_config,
+                        std::shared_ptr<IHardwareInterface> hw);
+    Arx5JointController(std::string model, std::shared_ptr<IHardwareInterface> hw);
 
     void set_joint_cmd(JointState new_cmd);
 

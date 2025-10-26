@@ -3,6 +3,18 @@ import numpy as np
 import numpy.typing as npt
 from enum import Enum
 
+class IHardwareInterface:
+    def __init__(self) -> None: ...
+    def read_state(self) -> "JointState": ...
+    def send_joint_command(
+        self, joint_index: int, kp: float, kd: float, pos: float, vel: float, torque: float
+    ) -> None: ...
+    def send_gripper_command(self, kp: float, kd: float, pos: float, vel: float, torque: float) -> None: ...
+    def enable_joint(self, joint_index: int) -> None: ...
+    def enable_gripper(self) -> None: ...
+    def set_zero_at_current_joint(self, joint_index: int) -> None: ...
+    def set_zero_at_current_gripper(self) -> None: ...
+
 class MotorType:
     EC_A4310: "MotorType"
     DM_J4310: "MotorType"
@@ -120,15 +132,15 @@ class Arx5JointController:
     @overload
     def __init__(
         self,
-        model: str,
-        interface_name: str,
+        robot_config: RobotConfig,
+        controller_config: ControllerConfig,
+        hw: IHardwareInterface,
     ) -> None: ...
     @overload
     def __init__(
         self,
-        robot_config: RobotConfig,
-        controller_config: ControllerConfig,
-        interface_name: str,
+        model: str,
+        hw: IHardwareInterface,
     ) -> None: ...
     def send_recv_once(self) -> None: ...
     def recv_once(self) -> None: ...
@@ -157,9 +169,7 @@ class EEFState:
     @overload
     def __init__(self) -> None: ...
     @overload
-    def __init__(
-        self, pose_6d: npt.NDArray[np.float64], gripper_pos: float
-    ) -> None: ...
+    def __init__(self, pose_6d: npt.NDArray[np.float64], gripper_pos: float) -> None: ...
     @overload
     def __init__(
         self,
@@ -174,13 +184,17 @@ class EEFState:
 
 class Arx5CartesianController:
     @overload
-    def __init__(self, model: str, interface_name: str) -> None: ...
-    @overload
     def __init__(
         self,
         robot_config: RobotConfig,
         controller_config: ControllerConfig,
-        interface_name: str,
+        hw: IHardwareInterface,
+    ) -> None: ...
+    @overload
+    def __init__(
+        self,
+        model: str,
+        hw: IHardwareInterface,
     ) -> None: ...
     def set_eef_cmd(self, cmd: EEFState) -> None: ...
     def set_eef_traj(self, traj: list[EEFState]) -> None: ...
@@ -236,6 +250,4 @@ class Arx5Solver:
         additional_trial_num: int,
     ) -> Tuple[int, npt.NDArray[np.float64]]: ...
     def get_ik_status_name(self, status: int) -> str: ...
-    def forward_kinematics(
-        self, joint_pos: npt.NDArray[np.float64]
-    ) -> npt.NDArray[np.float64]: ...
+    def forward_kinematics(self, joint_pos: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]: ...

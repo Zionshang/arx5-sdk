@@ -7,17 +7,17 @@
 using namespace arx;
 
 Arx5JointController::Arx5JointController(RobotConfig robot_config, ControllerConfig controller_config,
-                                         std::string interface_name)
-    : Arx5ControllerBase(robot_config, controller_config, interface_name)
+                                         std::shared_ptr<IHardwareInterface> hw)
+    : Arx5ControllerBase(robot_config, controller_config, std::move(hw))
 {
 }
 
-Arx5JointController::Arx5JointController(std::string model, std::string interface_name)
+Arx5JointController::Arx5JointController(std::string model, std::shared_ptr<IHardwareInterface> hw)
     : Arx5JointController::Arx5JointController(
           RobotConfigFactory::get_instance().get_config(model),
           ControllerConfigFactory::get_instance().get_config(
               "joint_controller", RobotConfigFactory::get_instance().get_config(model).joint_dof),
-          interface_name)
+          std::move(hw))
 {
 }
 
@@ -93,17 +93,17 @@ void Arx5JointController::calibrate_gripper()
     sleep_us(1000);
     for (int i = 0; i < 10; ++i)
     {
-        can_handle_.send_DM_motor_cmd(robot_config_.gripper_motor_id, 0, 0, 0, 0, 0);
+        hw_->send_gripper_command(0, 0, 0, 0, 0);
         usleep(400);
     }
     logger_->info("Start calibrating gripper. Please fully close the gripper and press "
                   "enter to continue");
     std::cin.get();
-    can_handle_.reset_zero_readout(robot_config_.gripper_motor_id);
+    hw_->set_zero_at_current_gripper();
     usleep(400);
     for (int i = 0; i < 10; ++i)
     {
-        can_handle_.send_DM_motor_cmd(robot_config_.gripper_motor_id, 0, 0, 0, 0, 0);
+        hw_->send_gripper_command(0, 0, 0, 0, 0);
         usleep(400);
     }
     usleep(400);
@@ -113,15 +113,10 @@ void Arx5JointController::calibrate_gripper()
 
     for (int i = 0; i < 10; ++i)
     {
-        can_handle_.send_DM_motor_cmd(robot_config_.gripper_motor_id, 0, 0, 0, 0, 0);
+        hw_->send_gripper_command(0, 0, 0, 0, 0);
         usleep(400);
     }
-    std::array<OD_Motor_Msg, 10> motor_msg = can_handle_.get_motor_msg();
-    std::cout << "Fully-open joint position readout: " << motor_msg[robot_config_.gripper_motor_id].angle_actual_rad
-              << std::endl;
-    std::cout << "  Please update the robot_config_.gripper_open_readout value in config.h to finish gripper "
-                 "calibration."
-              << std::endl;
+    // 抽象后不再直接读取原始电机读数；如需更新 gripper_open_readout，建议在具体硬件实现中提供日志或工具。
     if (prev_running)
     {
         background_send_recv_running_ = true;
@@ -136,26 +131,17 @@ void Arx5JointController::calibrate_joint(int joint_id)
     int motor_id = robot_config_.motor_id[joint_id];
     for (int i = 0; i < 10; ++i)
     {
-        if (robot_config_.motor_type[joint_id] == MotorType::EC_A4310)
-            can_handle_.send_EC_motor_cmd(motor_id, 0, 0, 0, 0, 0);
-        else
-            can_handle_.send_DM_motor_cmd(motor_id, 0, 0, 0, 0, 0);
+        hw_->send_joint_command(joint_id, 0, 0, 0, 0, 0);
         usleep(400);
     }
     logger_->info("Start calibrating joint {}. Please move the joint to the home position and press enter to continue",
                   joint_id);
     std::cin.get();
-    if (robot_config_.motor_type[joint_id] == MotorType::EC_A4310)
-        can_handle_.can_cmd_init(motor_id, 0x03);
-    else
-        can_handle_.reset_zero_readout(motor_id);
+    hw_->set_zero_at_current_joint(joint_id);
     usleep(400);
     for (int i = 0; i < 10; ++i)
     {
-        if (robot_config_.motor_type[joint_id] == MotorType::EC_A4310)
-            can_handle_.send_EC_motor_cmd(motor_id, 0, 0, 0, 0, 0);
-        else
-            can_handle_.send_DM_motor_cmd(motor_id, 0, 0, 0, 0, 0);
+        hw_->send_joint_command(joint_id, 0, 0, 0, 0, 0);
         usleep(400);
     }
     usleep(400);

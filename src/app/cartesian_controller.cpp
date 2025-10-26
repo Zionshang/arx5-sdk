@@ -9,22 +9,24 @@
 using namespace arx;
 
 Arx5CartesianController::Arx5CartesianController(RobotConfig robot_config, ControllerConfig controller_config,
-                                                 std::string interface_name)
-    : Arx5ControllerBase(robot_config, controller_config, interface_name)
+                                                 std::shared_ptr<IHardwareInterface> hw)
+    : Arx5ControllerBase(robot_config, controller_config, std::move(hw))
 {
     if (!controller_config.background_send_recv)
         throw std::runtime_error(
             "controller_config.background_send_recv should be set to true when running cartesian controller.");
 }
 
-Arx5CartesianController::Arx5CartesianController(std::string model, std::string interface_name)
+Arx5CartesianController::Arx5CartesianController(std::string model, std::shared_ptr<IHardwareInterface> hw)
     : Arx5CartesianController::Arx5CartesianController(
           RobotConfigFactory::get_instance().get_config(model),
           ControllerConfigFactory::get_instance().get_config(
               "cartesian_controller", RobotConfigFactory::get_instance().get_config(model).joint_dof),
-          interface_name)
+          std::move(hw))
 {
 }
+
+// (No convenience constructors) All callers must provide an IHardwareInterface
 
 void Arx5CartesianController::set_eef_cmd(EEFState new_cmd)
 {

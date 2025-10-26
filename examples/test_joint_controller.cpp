@@ -1,11 +1,16 @@
 #include "app/joint_controller.h"
+#include "hardware/can_hardware.h"
 #include <chrono>
 #include <csignal>
 #include <unistd.h>
 
 using namespace arx;
 
-Arx5JointController *arx5_joint_controller = new Arx5JointController("L5", "can0");
+RobotConfig g_robot_config = RobotConfigFactory::get_instance().get_config("L5");
+ControllerConfig g_controller_config =
+    ControllerConfigFactory::get_instance().get_config("joint_controller", g_robot_config.joint_dof);
+std::shared_ptr<IHardwareInterface> g_hw = std::make_shared<CanHardware>("can0", g_robot_config);
+Arx5JointController *arx5_joint_controller = new Arx5JointController(g_robot_config, g_controller_config, g_hw);
 
 void signal_handler(int signal)
 {

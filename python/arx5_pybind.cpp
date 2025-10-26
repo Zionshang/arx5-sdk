@@ -3,7 +3,7 @@
 #include "app/config.h"
 #include "app/controller_base.h"
 #include "app/joint_controller.h"
-#include "hardware/arx_can.h"
+#include "hardware/hardware_interface.h"
 #include "spdlog/spdlog.h"
 #include "utils.h"
 #include <pybind11/eigen.h>
@@ -13,8 +13,50 @@ namespace py = pybind11;
 using namespace arx;
 using Pose6d = Eigen::Matrix<double, 6, 1>;
 using VecDoF = Eigen::VectorXd;
+
+struct PyIHardwareInterface : IHardwareInterface
+{
+    using IHardwareInterface::IHardwareInterface;
+    JointState read_state() override
+    {
+        PYBIND11_OVERRIDE_PURE(JointState, IHardwareInterface, read_state);
+    }
+    void send_joint_command(int joint_index, float kp, float kd, float pos, float vel, float torque) override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, send_joint_command, joint_index, kp, kd, pos, vel, torque);
+    }
+    void send_gripper_command(float kp, float kd, float pos, float vel, float torque) override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, send_gripper_command, kp, kd, pos, vel, torque);
+    }
+    void enable_joint(int joint_index) override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, enable_joint, joint_index);
+    }
+    void enable_gripper() override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, enable_gripper);
+    }
+    void set_zero_at_current_joint(int joint_index) override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, set_zero_at_current_joint, joint_index);
+    }
+    void set_zero_at_current_gripper() override
+    {
+        PYBIND11_OVERRIDE_PURE(void, IHardwareInterface, set_zero_at_current_gripper);
+    }
+};
 PYBIND11_MODULE(arx5_interface, m)
 {
+    py::class_<IHardwareInterface, PyIHardwareInterface, std::shared_ptr<IHardwareInterface>>(m, "IHardwareInterface")
+        .def(py::init<>())
+        .def("read_state", &IHardwareInterface::read_state)
+        .def("send_joint_command", &IHardwareInterface::send_joint_command)
+        .def("send_gripper_command", &IHardwareInterface::send_gripper_command)
+        .def("enable_joint", &IHardwareInterface::enable_joint)
+        .def("enable_gripper", &IHardwareInterface::enable_gripper)
+        .def("set_zero_at_current_joint", &IHardwareInterface::set_zero_at_current_joint)
+        .def("set_zero_at_current_gripper", &IHardwareInterface::set_zero_at_current_gripper);
     py::enum_<spdlog::level::level_enum>(m, "LogLevel")
         .value("TRACE", spdlog::level::level_enum::trace)
         .value("DEBUG", spdlog::level::level_enum::debug)
@@ -58,10 +100,10 @@ PYBIND11_MODULE(arx5_interface, m)
         .def("kp", &Gain::get_kp_ref, py::return_value_policy::reference)
         .def("kd", &Gain::get_kd_ref, py::return_value_policy::reference);
     py::class_<Arx5JointController>(m, "Arx5JointController")
-        .def(py::init<const std::string &, const std::string &>())
-        .def(py::init<RobotConfig, ControllerConfig, const std::string &>())
-        .def("send_recv_once", &Arx5JointController::send_recv_once)
-        .def("recv_once", &Arx5JointController::recv_once)
+        .def(py::init<RobotConfig, ControllerConfig, std::shared_ptr<IHardwareInterface>>())
+        .def(py::init<const std::string &, std::shared_ptr<IHardwareInterface>>())
+        .def("send_recv_once", &Arx5JointController::send_recv_once, py::call_guard<py::gil_scoped_release>())
+        .def("recv_once", &Arx5JointController::recv_once, py::call_guard<py::gil_scoped_release>())
         .def("get_joint_state", &Arx5JointController::get_joint_state)
         .def("get_timestamp", &Arx5JointController::get_timestamp)
         .def("set_joint_cmd", &Arx5JointController::set_joint_cmd)
@@ -73,14 +115,14 @@ PYBIND11_MODULE(arx5_interface, m)
         .def("get_gain", &Arx5JointController::get_gain)
         .def("get_robot_config", &Arx5JointController::get_robot_config)
         .def("get_controller_config", &Arx5JointController::get_controller_config)
-        .def("reset_to_home", &Arx5JointController::reset_to_home)
-        .def("set_to_damping", &Arx5JointController::set_to_damping)
+        .def("reset_to_home", &Arx5JointController::reset_to_home, py::call_guard<py::gil_scoped_release>())
+        .def("set_to_damping", &Arx5JointController::set_to_damping, py::call_guard<py::gil_scoped_release>())
         .def("set_log_level", &Arx5JointController::set_log_level)
         .def("calibrate_joint", &Arx5JointController::calibrate_joint)
-        .def("calibrate_gripper", &Arx5JointController::calibrate_gripper);
+        .def("calibrate_gripper", &Arx5JointController::calibrate_gripper, py::call_guard<py::gil_scoped_release>());
     py::class_<Arx5CartesianController>(m, "Arx5CartesianController")
-        .def(py::init<const std::string &, const std::string &>())
-        .def(py::init<RobotConfig, ControllerConfig, const std::string &>())
+        .def(py::init<RobotConfig, ControllerConfig, std::shared_ptr<IHardwareInterface>>())
+        .def(py::init<const std::string &, std::shared_ptr<IHardwareInterface>>())
         .def("set_eef_cmd", &Arx5CartesianController::set_eef_cmd)
         .def("set_eef_traj", &Arx5CartesianController::set_eef_traj)
         .def("get_joint_cmd", &Arx5CartesianController::get_joint_cmd)
@@ -94,9 +136,9 @@ PYBIND11_MODULE(arx5_interface, m)
         .def("set_log_level", &Arx5CartesianController::set_log_level)
         .def("get_robot_config", &Arx5CartesianController::get_robot_config)
         .def("get_controller_config", &Arx5CartesianController::get_controller_config)
-        .def("reset_to_home", &Arx5CartesianController::reset_to_home)
+        .def("reset_to_home", &Arx5CartesianController::reset_to_home, py::call_guard<py::gil_scoped_release>())
         .def("multi_trial_ik", &Arx5CartesianController::multi_trial_ik)
-        .def("set_to_damping", &Arx5CartesianController::set_to_damping);
+        .def("set_to_damping", &Arx5CartesianController::set_to_damping, py::call_guard<py::gil_scoped_release>());
     py::class_<Arx5Solver>(m, "Arx5Solver")
         .def(py::init<const std::string &, int, Eigen::VectorXd, Eigen::VectorXd>())
         .def(py::init<const std::string &, int, Eigen::VectorXd, Eigen::VectorXd, const std::string &,

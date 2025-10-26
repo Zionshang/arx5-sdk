@@ -8,11 +8,11 @@
 using namespace arx;
 
 Arx5ControllerBase::Arx5ControllerBase(RobotConfig robot_config, ControllerConfig controller_config,
-                                       std::string interface_name)
-    : can_handle_(interface_name),
-      logger_(spdlog::stdout_color_mt(robot_config.robot_model + std::string("_") + interface_name)),
+                                       std::shared_ptr<IHardwareInterface> hw)
+    : logger_(spdlog::stdout_color_mt(robot_config.robot_model + std::string("_controller"))),
       robot_config_(robot_config), controller_config_(controller_config)
 {
+    hw_ = std::move(hw);
     start_time_us_ = get_time_us();
     logger_->set_pattern("[%H:%M:%S %n %^%l%$] %v");
     solver_ = std::make_shared<Arx5Solver>(
@@ -369,41 +369,9 @@ void Arx5ControllerBase::update_joint_state_()
     const double torque_constant_EC_A4310 = 1.4; // Nm/A
     const double torque_constant_DM_J4310 = 0.424;
     const double torque_constant_DM_J4340 = 1.0;
-    std::array<OD_Motor_Msg, 10> motor_msg = can_handle_.get_motor_msg();
+
     std::lock_guard<std::mutex> guard(state_mutex_);
-
-    for (int i = 0; i < robot_config_.joint_dof; i++)
-    {
-        joint_state_.pos[i] = motor_msg[robot_config_.motor_id[i]].angle_actual_rad;
-        joint_state_.vel[i] = motor_msg[robot_config_.motor_id[i]].speed_actual_rad;
-
-        // Torque: matching the values (there must be something wrong)
-        if (robot_config_.motor_type[i] == MotorType::EC_A4310)
-        {
-            joint_state_.torque[i] = motor_msg[robot_config_.motor_id[i]].current_actual_float *
-                                     torque_constant_EC_A4310 * torque_constant_EC_A4310;
-            // Why are there two torque_constant_EC_A4310?
-        }
-        else if (robot_config_.motor_type[i] == MotorType::DM_J4310)
-        {
-            joint_state_.torque[i] =
-                motor_msg[robot_config_.motor_id[i]].current_actual_float * torque_constant_DM_J4310;
-        }
-        else if (robot_config_.motor_type[i] == MotorType::DM_J4340)
-        {
-            joint_state_.torque[i] =
-                motor_msg[robot_config_.motor_id[i]].current_actual_float * torque_constant_DM_J4340;
-        }
-    }
-
-    joint_state_.gripper_pos = motor_msg[robot_config_.gripper_motor_id].angle_actual_rad /
-                               robot_config_.gripper_open_readout * robot_config_.gripper_width;
-
-    joint_state_.gripper_vel = motor_msg[robot_config_.gripper_motor_id].speed_actual_rad /
-                               robot_config_.gripper_open_readout * robot_config_.gripper_width;
-
-    joint_state_.gripper_torque =
-        motor_msg[robot_config_.gripper_motor_id].current_actual_float * torque_constant_DM_J4310;
+    joint_state_ = hw_->read_state();
     joint_state_.timestamp = get_timestamp();
 }
 
@@ -551,11 +519,6 @@ void Arx5ControllerBase::update_output_cmd_()
 
 void Arx5ControllerBase::send_recv_()
 {
-    // TODO: in the motor documentation, there shouldn't be these torque constants. Torque will go directly into the
-    // motors
-    const double torque_constant_EC_A4310 = 1.4; // Nm/A
-    const double torque_constant_DM_J4310 = 0.424;
-    const double torque_constant_DM_J4340 = 1.0;
     int start_time_us = get_time_us();
 
     update_output_cmd_();
@@ -567,47 +530,18 @@ void Arx5ControllerBase::send_recv_()
         int start_send_motor_time_us = get_time_us();
         {
             std::lock_guard<std::mutex> guard(cmd_mutex_);
-            if (robot_config_.motor_type[i] == MotorType::EC_A4310)
-            {
-                can_handle_.send_EC_motor_cmd(robot_config_.motor_id[i], gain_.kp[i], gain_.kd[i],
-                                              output_joint_cmd_.pos[i], output_joint_cmd_.vel[i],
-                                              output_joint_cmd_.torque[i] / torque_constant_EC_A4310);
-            }
-            else if (robot_config_.motor_type[i] == MotorType::DM_J4310)
-            {
-
-                can_handle_.send_DM_motor_cmd(robot_config_.motor_id[i], gain_.kp[i], gain_.kd[i],
-                                              output_joint_cmd_.pos[i], output_joint_cmd_.vel[i],
-                                              output_joint_cmd_.torque[i] / torque_constant_DM_J4310);
-            }
-            else if (robot_config_.motor_type[i] == MotorType::DM_J4340)
-            {
-                can_handle_.send_DM_motor_cmd(robot_config_.motor_id[i], gain_.kp[i], gain_.kd[i],
-                                              output_joint_cmd_.pos[i], output_joint_cmd_.vel[i],
-                                              output_joint_cmd_.torque[i] / torque_constant_DM_J4340);
-            }
-            else
-            {
-                logger_->error("Motor type not supported.");
-                return;
-            }
+            hw_->send_joint_command(i, gain_.kp[i], gain_.kd[i], output_joint_cmd_.pos[i], output_joint_cmd_.vel[i],
+                                    output_joint_cmd_.torque[i]);
         }
         int finish_send_motor_time_us = get_time_us();
         sleep_us(communicate_sleep_us - (finish_send_motor_time_us - start_send_motor_time_us));
     }
 
-    // Send gripper command (gripper is using DM motor)
-    if (robot_config_.gripper_motor_type == MotorType::DM_J4310)
+    // Send gripper command (通用接口内部完成映射与换算)
     {
         int start_send_motor_time_us = get_time_us();
-
-        double gripper_motor_pos =
-            output_joint_cmd_.gripper_pos / robot_config_.gripper_width * robot_config_.gripper_open_readout;
-        double gripper_motor_vel =
-            output_joint_cmd_.gripper_vel / robot_config_.gripper_width * robot_config_.gripper_open_readout;
-        double gripper_motor_torque = output_joint_cmd_.gripper_torque / torque_constant_DM_J4310;
-        can_handle_.send_DM_motor_cmd(robot_config_.gripper_motor_id, gain_.gripper_kp, gain_.gripper_kd,
-                                      gripper_motor_pos, gripper_motor_vel, gripper_motor_torque);
+        hw_->send_gripper_command(gain_.gripper_kp, gain_.gripper_kd, output_joint_cmd_.gripper_pos,
+                                  output_joint_cmd_.gripper_vel, output_joint_cmd_.gripper_torque);
         int finish_send_motor_time_us = get_time_us();
         sleep_us(communicate_sleep_us - (finish_send_motor_time_us - start_send_motor_time_us));
     }
@@ -630,32 +564,13 @@ void Arx5ControllerBase::recv_()
     for (int i = 0; i < robot_config_.joint_dof; i++)
     {
         int start_send_motor_time_us = get_time_us();
-        if (robot_config_.motor_type[i] == MotorType::EC_A4310)
-        {
-            // can_handle_.query_EC_motor_pos(robot_config_.motor_id[i]);
-            // sleep_us(100);
-            // can_handle_.query_EC_motor_vel(robot_config_.motor_id[i]);
-            // sleep_us(100);
-            // can_handle_.query_EC_motor_current(robot_config_.motor_id[i]);
-        }
-        else if (robot_config_.motor_type[i] == MotorType::DM_J4310 ||
-                 robot_config_.motor_type[i] == MotorType::DM_J4340 ||
-                 robot_config_.motor_type[i] == MotorType::DM_J8009)
-        {
-            can_handle_.enable_DM_motor(robot_config_.motor_id[i]);
-        }
-        else
-        {
-            logger_->error("Motor type not supported.");
-            assert(false);
-        }
+        hw_->enable_joint(i);
         int finish_send_motor_time_us = get_time_us();
         sleep_us(communicate_sleep_us - (finish_send_motor_time_us - start_send_motor_time_us));
     }
-    if (robot_config_.gripper_motor_type == MotorType::DM_J4310)
     {
         int start_send_motor_time_us = get_time_us();
-        can_handle_.enable_DM_motor(robot_config_.gripper_motor_id);
+        hw_->enable_gripper();
         int finish_send_motor_time_us = get_time_us();
         sleep_us(communicate_sleep_us - (finish_send_motor_time_us - start_send_motor_time_us));
     }
