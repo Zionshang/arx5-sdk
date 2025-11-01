@@ -44,9 +44,9 @@ def pose_to_homogeneous_matrix(pose):
 def camera_calibrate(iamges_path):
     print("++++++++++开始相机标定++++++++++++++")
     # 角点的个数以及棋盘格间距
-    XX = 9  # 标定板的中长度对应的角点的个数
-    YY = 6  # 标定板的中宽度对应的角点的个数
-    L = 0.035  # 标定板一格的长度  单位为米
+    XX = 11  # 标定板的中长度对应的角点的个数
+    YY = 8  # 标定板的中宽度对应的角点的个数
+    L = 0.015  # 标定板一格的长度  单位为米
 
     # 设置寻找亚像素角点的参数，采用的停止准则是最大循环次数30和最大误差容限0.001
     criteria = (cv2.TERM_CRITERIA_MAX_ITER | cv2.TERM_CRITERIA_EPS, 30, 0.001)
@@ -58,10 +58,10 @@ def camera_calibrate(iamges_path):
 
     obj_points = []  # 存储3D点
     img_points = []  # 存储2D点
-
+    size = None
     for i in range(0, 20):  # 标定好的图片在iamges_path路径下，从0.jpg到x.jpg   一般采集20张左右就够，实际情况可修改
 
-        image = f"{iamges_path}/{i}.jpg"
+        image = f"{iamges_path}/images{i}.jpg"
         print(f"正在处理第{i}张图片：{image}")
 
         if os.path.exists(image):
@@ -96,6 +96,7 @@ def camera_calibrate(iamges_path):
                     img_points.append(corners)
 
     N = len(img_points)
+    print(f"成功找到 {N} 张标定板图片的角点信息。")
 
     # 标定得到图案在相机坐标系下的位姿
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(obj_points, img_points, size, None, None)

@@ -19,8 +19,8 @@ import click
 
 def start_keyboard_teleop(controller: Arx5CartesianController):
 
-    ori_speed = 1.0
-    pos_speed = 0.4
+    ori_speed = 0.8
+    pos_speed = 0.2
     gripper_speed = 0.04
     target_pose_6d = controller.get_home_pose()
 

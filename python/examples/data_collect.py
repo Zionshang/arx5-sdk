@@ -5,7 +5,7 @@
 保存格式：x,y,z,roll,pitch,yaw （角度为弧度）
 按键说明：
   - h：采集一帧图像并保存对应的机械臂末端位姿
-  - q：退出采集
+  - t：退出采集
 """
 
 import cv2
@@ -63,7 +63,7 @@ def data_collect(model="X5", interface="can0"):
             cv2.imshow("detection", color_image)  # 窗口显示，显示名为 Capture_Video
 
             k = cv2.waitKey(1) & 0xFF  # 每帧数据延时 1ms，延时不能为 0，否则读取的结果会是静态帧
-            if k == ord('q'):
+            if k == ord('t'):
                 print("收到退出指令，结束采集...")
                 break
             if k == ord('h'):  # 键盘按一下h, 保存当前照片和机械臂位姿（在图像窗口内按键）
@@ -85,10 +85,10 @@ def data_collect(model="X5", interface="can0"):
                     new_line = f"{','.join(pose_)}\n"
                     f.write(new_line)
 
-                img_path = os.path.join(image_save_path, f"{count}.jpg")
-                cv2.imwrite(img_path, color_image)
-                print(f"已保存: {img_path}")
-                count += 1
+                    img_path = os.path.join(image_save_path, f"images{count}.jpg")
+                    cv2.imwrite(img_path, color_image)
+                    print(f"已保存: {img_path}")
+                    count += 1
     finally:
         # 资源清理
         try:
@@ -121,6 +121,6 @@ if __name__ == "__main__":
     print("  - Space: 重置到初始位置")
     print("图像窗口控制：")
     print("  - H: 采集当前图像和位姿")
-    print("  - Q: 退出程序")
+    print("  - T: 退出程序")
     
     data_collect(model, interface)
