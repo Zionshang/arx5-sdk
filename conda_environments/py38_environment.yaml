@@ -1,4 +1,4 @@
-name: arx-py38
+name: handeye
 channels:
   - robostack
   - conda-forge
