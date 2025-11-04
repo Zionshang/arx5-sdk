@@ -31,21 +31,7 @@ def convert_new(
     T_grasp2cam[:3, 3] = grasp_translation
 
     # =============== 2) 在 GraspNet 的输出上做「轴对齐 + 夹爪补偿」 ================
-    #
-    #   GraspNet 抓取坐标系：   x 轴 = 抓取主轴/接近方向(approach),  y 轴 = 张开/宽度方向(binormal),  z 轴 = 掌面法向(normal)
-    #   本项目机械臂末端坐标系：x 前(抓取主轴)、y 左(张开方向)、z 上(法向)。
-    #
-    #   因此 旋转矩阵 R_align 取单位阵："GraspNet.x -> Robot.x"、"GraspNet.y -> Robot.y"、"GraspNet.z -> Robot.z"。
-    #   位移补偿沿新坐标系的 -X 方向（末端主轴后退）。
-    #
-    #   如果把这个对齐+补偿独立做成 4x4 的矩阵 T_align ，那么
-    #       T_gripper2cam = T_grasp2cam * T_align
-    #   才是「已经对齐、包含补偿后的抓取姿态」在相机坐标系下的变换。
-    #
-    #   注：关于右乘还是左乘，取决于你要把此旋转当做“新的局部坐标系”怎样嵌入到原坐标系中。
-    #       这里采用右乘的方式，让 T_align 表示 “新gripper坐标系 → 旧grasp坐标系” 的变换。
-    #
-    # 末端主轴 = +X，与 GraspNet 定义一致，R_align 取单位阵
+
     R_align = np.eye(3, dtype=float)
 
     T_align = np.eye(4, dtype=float)
@@ -70,9 +56,7 @@ def convert_new(
     # =============== 4) 当前末端姿态：构造【末端坐标系 → 基座坐标系】的变换 ================
     #   如果你的机械臂 API 返回的 (x,y,z,rx,ry,rz) 本身就表示“末端在基座系的位姿”，
     #   那么做法是：T_ee2base * [0,0,0,1] = [x,y,z,1]，并把欧拉角对应旋转填进去。
-    #
-    #   注意这里欧拉角顺序需要和你的机械臂或自己定义保持一致。
-    #
+
     x_ee, y_ee, z_ee, rx_ee, ry_ee, rz_ee = current_ee_pose
 
     # 例：机械臂有些驱动器/SDK喜欢 'ZYX' 顺序，也有喜欢 'XYZ'。下面仅做示例：
