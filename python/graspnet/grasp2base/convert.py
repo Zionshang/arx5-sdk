@@ -8,7 +8,7 @@ def convert_new(
         current_ee_pose,  # 机械臂当前末端在基座坐标系下的位姿 [x, y, z, rx, ry, rz]
         handeye_rot,  # 手眼标定旋转矩阵 (相机→末端)
         handeye_trans,  # 手眼标定平移向量 (相机→末端)
-        gripper_length=0.13
+        gripper_length=0.0
 ):
     """
     根据 GraspNet 输出 (相机系下的抓取位姿)，计算在机械臂基座系下的抓取位姿。
@@ -29,6 +29,8 @@ def convert_new(
     T_grasp2cam = np.eye(4, dtype=float)
     T_grasp2cam[:3, :3] = grasp_rotation_mat
     T_grasp2cam[:3, 3] = grasp_translation
+    print(f"抓取坐标系 → 相机坐标系(平移):\n{grasp_translation}\n")
+    print(f"抓取坐标系 → 相机坐标系(旋转):\n{grasp_rotation_mat}\n")
 
     # =============== 2) 在 GraspNet 的输出上做「轴对齐 + 夹爪补偿」 ================
 
@@ -52,6 +54,8 @@ def convert_new(
     T_cam2ee = np.eye(4, dtype=float)
     T_cam2ee[:3, :3] = handeye_rot
     T_cam2ee[:3, 3] = handeye_trans
+    print(f"相机坐标系 → 末端坐标系(平移):\n{handeye_trans}\n")
+    print(f"相机坐标系 → 末端坐标系(旋转):\n{handeye_rot}\n")
 
     # =============== 4) 当前末端姿态：构造【末端坐标系 → 基座坐标系】的变换 ================
     #   如果你的机械臂 API 返回的 (x,y,z,rx,ry,rz) 本身就表示“末端在基座系的位姿”，
@@ -69,7 +73,8 @@ def convert_new(
     T_ee2base = np.eye(4, dtype=float)
     T_ee2base[:3, :3] = R_ee2base
     T_ee2base[:3, 3] = [x_ee, y_ee, z_ee]
-
+    print(f"末端坐标系 → 基座坐标系(平移):\n{[x_ee, y_ee, z_ee]}\n")
+    print(f"末端坐标系 → 基座坐标系(旋转):\n{R_ee2base}\n")
     # =============== 5) 计算最终【抓取坐标系(对齐后) → 基座坐标系】 ================
     #
     #   T_gripper2base = T_ee2base * (T_cam2ee * T_gripper2cam)
@@ -81,6 +86,8 @@ def convert_new(
     # 分离出旋转 + 平移
     final_rot_mat = T_gripper2base[:3, :3]
     final_trans = T_gripper2base[:3, 3]
+    print(f"抓取坐标系 → 基座坐标系(平移):\n{final_trans}\n")
+    print(f"抓取坐标系 → 基座坐标系(旋转):\n{final_rot_mat}\n")
 
     # =============== 6) 将最终旋转矩阵变为欧拉角 (如果你需要欧拉角作为机械臂指令) ================
     #   再次强调，具体要什么顺序，需要和你的机械臂驱动匹配。
