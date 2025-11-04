@@ -126,6 +126,12 @@ def init_vis(window_name: str = 'GraspNet Live', w: int = 1280, h: int = 720):
     return vis, pcd, T
 
 def grasp_control(translation, rotation, width, current_pose, rotation_matrix, translation_vector):
+    
+    #打印位姿信息
+    np.set_printoptions(precision=5, suppress=True)
+    print(f"translation (m):\n{translation}")
+    print(f"rotation_matrix:\n{rotation_matrix}")
+    print(f"width (m): {width:.5f}")
     # 抓取位姿计算
     base_pose = convert_new(translation, rotation, current_pose, rotation_matrix, translation_vector)
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
@@ -287,11 +293,11 @@ def short_loop(args):
                     _, _, eef_state = arm_time_and_state()
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control(t, R, w, current_pose, rotation_matrix, translation_vector)
-                    base_pose = convert_new(t, R, current_pose, rotation_matrix, translation_vector)
-                    np.set_printoptions(precision=5, suppress=True)
-                    print(f"translation (m):\n{t}")
-                    print(f"rotation_matrix:\n{R}")
-                    print(f"width (m): {w:.5f}")
+                    # base_pose = convert_new(t, R, current_pose, rotation_matrix, translation_vector)
+                    # np.set_printoptions(precision=5, suppress=True)
+                    # print(f"translation (m):\n{t}")
+                    # print(f"rotation_matrix:\n{R}")
+                    # print(f"width (m): {w:.5f}")
                 else:
                     print("No grasp available yet.")
 
