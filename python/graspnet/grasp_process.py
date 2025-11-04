@@ -225,7 +225,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd
     gg.nms()
     gg.sort_by_score()
 
-    # 垂直方向筛选（±30°）。approach 方向取旋转矩阵第一列。
+    # 方向筛选
     vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
     angle_threshold = np.deg2rad(30.0)
     keep_inds = []
@@ -259,6 +259,13 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd
 
     # Open3D gripper geometries and show
     grippers = gg_filtered.to_open3d_geometry_list()
+    for grasp in gg_filtered:
+        frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
+        pose = np.eye(4, dtype=np.float64)
+        pose[:3, :3] = grasp.rotation_matrix
+        pose[:3, 3] = grasp.translation
+        safe_transform(frame, pose)
+        grippers.append(frame)
     gripper_geoms = replace_grippers(vis, gripper_geoms, grippers, T)
     vis.poll_events()
     vis.update_renderer()

@@ -315,6 +315,8 @@ def short_loop(args):
                     _, _, eef_state = arm_time_and_state()
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
+                    time.sleep(1000)
+                    break
                     # base_pose = convert_new(t, R, current_pose, rotation_matrix, translation_vector)
                     # np.set_printoptions(precision=5, suppress=True)
                     # print(f"translation (m):\n{t}")
@@ -324,9 +326,9 @@ def short_loop(args):
                     print("No grasp available yet.")
 
             # 性能打印
-            t = time.time() - start_t
-            if t > 0:
-                print(f'Frame time: {t:.3f}s, FPS: {1.0/t:.1f}', end='\r')
+            # t = time.time() - start_t
+            # if t > 0:
+            #     print(f'Frame time: {t:.3f}s, FPS: {1.0/t:.1f}', end='\r')
 
     finally:
         pipeline.stop()
