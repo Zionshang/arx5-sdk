@@ -21,6 +21,14 @@ import cv2
 import open3d as o3d
 import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation as R
+# 确保可以导入项目根下的 arx5_interface（与 python/examples 中用法保持一致）
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+    try:
+        os.chdir(ROOT_DIR)
+    except Exception:
+        pass
 from arx5_interface import Arx5CartesianController, EEFState
 from grasp2base.convert import convert_new
 # 同目录导入现有实现（其内部已设置 models/utils/graspnetAPI 路径）
@@ -142,7 +150,7 @@ def grasp_control(translation, rotation, width, current_pose, rotation_matrix, t
     base_rxyz = base_pose_np[3:]
 
     # 预抓取计算01：
-    pre_grasp_offset_01 = 0.2
+    pre_grasp_offset_01 = 0.1
     pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
     # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
     rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
@@ -150,7 +158,7 @@ def grasp_control(translation, rotation, width, current_pose, rotation_matrix, t
     pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
 
     #预抓取计算02：
-    pre_grasp_offset_02 = 0.1
+    pre_grasp_offset_02 = 0.05
     pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
     # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
     rotation_mat = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()

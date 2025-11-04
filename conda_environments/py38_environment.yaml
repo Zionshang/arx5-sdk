@@ -1,4 +1,4 @@
-name: arx-py38
+name: graspnet
 channels:
   - robostack
   - conda-forge
