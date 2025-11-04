@@ -152,18 +152,20 @@ def grasp_control(translation, rotation, width, current_pose, rotation_matrix, t
     # 预抓取计算01：
     pre_grasp_offset_01 = 0.1
     pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
-    # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
-    rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
-    x_axis = rotation_mat[:, 0]
-    pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
+    # # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
+    # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
+    # x_axis = rotation_mat[:, 0]
+    # pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
+    pre_grasp_pose_01[2] += pre_grasp_offset_01
 
     #预抓取计算02：
     pre_grasp_offset_02 = 0.05
     pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
     # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
-    rotation_mat = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
-    x_axis = rotation_mat[:, 0]
-    pre_grasp_pose_02[:3] -= x_axis * pre_grasp_offset_02
+    # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
+    # x_axis = rotation_mat[:, 0]
+    # pre_grasp_pose_02[:3] -= x_axis * pre_grasp_offset_02
+    pre_grasp_pose_02[2] += pre_grasp_offset_02
 
     controller, now, eef_state = arm_time_and_state()
     grip_max = controller.get_robot_config().gripper_width
@@ -250,14 +252,20 @@ def short_loop(args):
     # arm_init
     controller = init_arm_controller()
     controller.reset_to_home()
-    prep_pose = np.array([
-        0.29706425627506916,
-        0.0011580941568794434,
-        0.21525932370625145,
-        0.0007819766058320712,
-        0.8123520107516141,
-        0.001025180707405457,
-    ], dtype=float)
+    # prep_pose = np.array([
+    #     0.29706425627506916,
+    #     0.0011580941568794434,
+    #     0.21525932370625145,
+    #     0.0007819766058320712,
+    #     0.8123520107516141,
+    #     0.001025180707405457,
+    # ], dtype=float)
+    prep_pose = np.array([0.3808947838198619,
+                         0.0010951536627964757,
+                         0.23226317113384085,
+                         0.003068532940281973,
+                         1.2510476636525898,
+                         0.002855123071475998], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
 
