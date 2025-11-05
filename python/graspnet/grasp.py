@@ -42,6 +42,11 @@ handeye_rotation = [[-0.02489131, -0.16662419, 0.98570624],
                    [-0.99968, 0.00859452, -0.02379136],
                    [-0.00450745, -0.98598302, -0.1667848]]
 handeye_translation = [-0.0702653, 0.03149889, 0.06295003]
+
+T_o3d = np.eye(4, dtype=np.float64)
+T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
+                          [0.0, -1.0, 0.0],
+                          [0.0, 0.0, -1.0]], dtype=np.float64)
  
 
 # =============== 机械臂控制（简洁接口） ===============
@@ -120,18 +125,18 @@ def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
                          factor_depth)
 
 
-def init_vis(window_name: str = 'GraspNet Live', w: int = 1280, h: int = 720):
-    """初始化 Open3D 可视化器与点云，返回 (vis, pcd, T)。"""
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(window_name=window_name, width=w, height=h)
-    pcd = o3d.geometry.PointCloud()
-    vis.add_geometry(pcd)
-    # 调整显示方向
-    T = np.eye(4, dtype=np.float64)
-    T[:3, :3] = np.array([[1.0, 0.0, 0.0],
-                          [0.0, -1.0, 0.0],
-                          [0.0, 0.0, -1.0]], dtype=np.float64)
-    return vis, pcd, T
+# def init_vis(window_name: str = 'GraspNet Live', w: int = 1280, h: int = 720):
+#     """初始化 Open3D 可视化器与点云，返回 (vis, pcd, T)。"""
+#     vis = o3d.visualization.Visualizer()
+#     vis.create_window(window_name=window_name, width=w, height=h)
+#     pcd = o3d.geometry.PointCloud()
+#     vis.add_geometry(pcd)
+#     # 调整显示方向
+#     T = np.eye(4, dtype=np.float64)
+#     T[:3, :3] = np.array([[1.0, 0.0, 0.0],
+#                           [0.0, -1.0, 0.0],
+#                           [0.0, 0.0, -1.0]], dtype=np.float64)
+#     return vis, pcd, T
 
 def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
@@ -188,50 +193,17 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 
 
 # --------------------------- 主循环（精炼） ---------------------------
-def run_once(pipeline: rs.pipeline,
-             align: rs.align,
-             net: Any,
-             device: Any,
-             camera_info: gp.CameraInfo,
-             args: Any,
-             vis: o3d.visualization.Visualizer,
-             pcd: o3d.geometry.PointCloud,
-             gripper_geoms: list,
-             T: np.ndarray,
-             yolo_model: Optional[Any],
-             yolo_params: Optional[dict],
-             frame_idx: int,
-             last_grasp_info: Optional[dict]):
-    """处理一帧：返回 (gripper_geoms, last_grasp_info, seg_vis)。"""
+def capture_frame(pipeline: rs.pipeline, align: rs.align) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """Grab a synchronized color/depth frame pair from the RealSense pipeline."""
     frames = pipeline.wait_for_frames()
     aligned = align.process(frames)
     color_frame = aligned.get_color_frame()
     depth_frame = aligned.get_depth_frame()
     if not color_frame or not depth_frame:
-        return gripper_geoms, last_grasp_info, None, None, None
-
+        return None, None
     color = np.asanyarray(color_frame.get_data())
     depth = np.asanyarray(depth_frame.get_data())
-
-    workspace_mask, seg_vis = (None, None)
-    if frame_idx % 5 == 0:  # 与 grasp_process.py 同步的触发频率
-        workspace_mask, seg_vis = gp.yolo_get_mask(yolo_model, color, yolo_params) if yolo_model else (None, None)
-        if workspace_mask is not None:
-            gripper_geoms, last_grasp_info = gp.run_graspnet_for_mask(
-                net, device, color, depth, camera_info, args, vis, pcd, gripper_geoms, T, workspace_mask
-            )
-        else:
-            # 清空抓取几何
-            if gripper_geoms:
-                for g in gripper_geoms:
-                    try:
-                        vis.remove_geometry(g)
-                    except Exception:
-                        pass
-            gripper_geoms = []
-            last_grasp_info = None
-
-    return gripper_geoms, last_grasp_info, seg_vis, color, depth
+    return color, depth
 
 
 def short_loop(args):
@@ -250,22 +222,16 @@ def short_loop(args):
     camera_info = make_camera_info(color_w, color_h)
 
     # 可视化
-    vis, pcd, T = init_vis()
+    # vis, pcd, T = init_vis()
+    pcd = o3d.geometry.PointCloud()
     gripper_geoms = []
     last_grasp_info = None
-    frame_idx = 0
+    seg_vis = None
 
     # arm_init
     controller = init_arm_controller()
     controller.reset_to_home()
-    # prep_pose = np.array([
-    #     0.29706425627506916,
-    #     0.0011580941568794434,
-    #     0.21525932370625145,
-    #     0.0007819766058320712,
-    #     0.8123520107516141,
-    #     0.001025180707405457,
-    # ], dtype=float)
+    # 预抓取位姿
     prep_pose = np.array([0.3808947838198619,
                          0.0010951536627964757,
                          0.23226317113384085,
@@ -275,38 +241,55 @@ def short_loop(args):
     prep_pose = np.array([0.1482, 0.0, 0.2525, 0.0, 0.86, 0.0], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
+    grip_max = controller.get_robot_config().gripper_width
 
     controller.set_eef_traj([
         build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-        build_eef_cmd(prep_pose, grip_home, start_ts + 7.0),
+        build_eef_cmd(prep_pose, grip_home, start_ts + 5.0),
+        build_eef_cmd(prep_pose, grip_max, start_ts + 8.0),
     ])
 
     try:
         while True:
-            frame_idx += 1
-            start_t = time.time()
-            gripper_geoms, last_grasp_info, seg_vis, color, depth = run_once(
-                pipeline, align, net, device, camera_info, args, vis, pcd, gripper_geoms, T,
-                yolo_model, yolo_params, frame_idx, last_grasp_info
-            )
+            color, depth = capture_frame(pipeline, align)
+            if color is None or depth is None:
+                continue
 
-            # 2D 窗口
-            if color is not None:
-                cv2.imshow('Color (raw)', color)
-            if depth is not None:
-                depth_colormap = gp.depth_to_colormap(depth)
-                if depth_colormap is not None:
-                    cv2.imshow('Depth (aligned)', depth_colormap)
+            cv2.imshow('Color (raw)', color)
+            depth_colormap = gp.depth_to_colormap(depth)
+            if depth_colormap is not None:
+                cv2.imshow('Depth (aligned)', depth_colormap)
             if seg_vis is not None:
                 cv2.imshow('YOLO Segmentation', seg_vis)
 
-            # 键盘
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'):
                 break
             elif key == ord(' '):
                 print("[Safety] Returning arm to home pose.")
                 controller.reset_to_home()
+            elif key == ord('t'):
+                if yolo_model is not None:
+                    workspace_mask, seg_vis_candidate = gp.yolo_get_mask(yolo_model, color, yolo_params)
+                    seg_vis = seg_vis_candidate
+                else:
+                    workspace_mask = np.where(depth > 0, 255, 0).astype(np.uint8)
+                    seg_vis = None
+
+                if workspace_mask is None:
+                    print('[Info] YOLO 未检测到目标，跳过抓取生成。')
+                    # if gripper_geoms:
+                    #     for g in gripper_geoms:
+                    #         try:
+                    #             vis.remove_geometry(g)
+                    #         except Exception:
+                    #             pass
+                    # gripper_geoms = []
+                    last_grasp_info = None
+                else:
+                    gripper_geoms, last_grasp_info = gp.run_graspnet_for_mask(
+                        net, device, color, depth, camera_info, args, pcd, gripper_geoms, T_o3d, workspace_mask
+                    )
             elif key == ord('z'):
                 print("\n===== Current Grasp (camera frame) =====")
                 if last_grasp_info is not None:
@@ -318,20 +301,10 @@ def short_loop(args):
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
                     time.sleep(15)
                     print(controller.get_eef_state().pose_6d())
-                    time.sleep(1000)
+                    time.sleep(10)
                     break
-                    # base_pose = convert_new(t, R, current_pose, rotation_matrix, translation_vector)
-                    # np.set_printoptions(precision=5, suppress=True)
-                    # print(f"translation (m):\n{t}")
-                    # print(f"rotation_matrix:\n{R}")
-                    # print(f"width (m): {w:.5f}")
                 else:
                     print("No grasp available yet.")
-
-            # 性能打印
-            # t = time.time() - start_t
-            # if t > 0:
-            #     print(f'Frame time: {t:.3f}s, FPS: {1.0/t:.1f}', end='\r')
 
     finally:
         pipeline.stop()

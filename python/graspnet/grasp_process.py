@@ -187,27 +187,27 @@ def yolo_get_mask(yolo_model, color, yolo_predict_params):
         return None, None
 
 
-def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd, gripper_geoms, T, workspace_mask):
+def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, gripper_geoms, T, workspace_mask):
     # prepare inputs
     end_points, cloud, cloud_masked, color_masked = prepare_end_points(color, depth, camera_info, args.num_point, device, workspace_mask=workspace_mask)
 
     # update Open3D point cloud (use masked points/colors)
     update_pcd(pcd, cloud_masked, color_masked, T)
-    vis.update_geometry(pcd)
+    # vis.update_geometry(pcd)
 
     # 无有效点云时：清空抓取几何并跳过推理
-    if end_points is None:
-        print('[Warn] 当前帧无有效点云，清空抓取几何并跳过预测。')
-        if gripper_geoms:
-            for g in gripper_geoms:
-                try:
-                    vis.remove_geometry(g)
-                except Exception:
-                    pass
-            gripper_geoms = []
-        vis.poll_events()
-        vis.update_renderer()
-        return [], None
+    # if end_points is None:
+    #     print('[Warn] 当前帧无有效点云，清空抓取几何并跳过预测。')
+    #     if gripper_geoms:
+    #         for g in gripper_geoms:
+    #             try:
+    #                 vis.remove_geometry(g)
+    #             except Exception:
+    #                 pass
+    #         gripper_geoms = []
+    #     vis.poll_events()
+    #     vis.update_renderer()
+    #     return [], None
 
     with torch.no_grad():
         end_points = net(end_points)
@@ -226,27 +226,27 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd
     gg.sort_by_score()
 
     # 方向筛选
-    # vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    # angle_threshold = np.deg2rad(30.0)
-    # keep_inds = []
-    # for i, grasp in enumerate(gg):
-    #     R = grasp.rotation_matrix  # 3x3
-    #     approach_dir = R[:, 0]
-    #     cos_angle = float(np.dot(approach_dir, vertical))
-    #     cos_angle = np.clip(cos_angle, -1.0, 1.0)
-    #     angle = np.arccos(cos_angle)
-    #     if angle < angle_threshold:
-    #         keep_inds.append(i)
-    # if len(keep_inds) == 0:
-    #     print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
-    #     gg_filtered = gg
-    # else:
-    #     gg_filtered = gg[keep_inds]
+    vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    angle_threshold = np.deg2rad(30.0)
+    keep_inds = []
+    for i, grasp in enumerate(gg):
+        R = grasp.rotation_matrix  # 3x3
+        approach_dir = R[:, 0]
+        cos_angle = float(np.dot(approach_dir, vertical))
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        angle = np.arccos(cos_angle)
+        if angle < angle_threshold:
+            keep_inds.append(i)
+    if len(keep_inds) == 0:
+        print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
+        gg_filtered = gg
+    else:
+        gg_filtered = gg[keep_inds]
 
     # 只取垂直筛选后的前1个（已经按分数降序排序）
-    # if len(gg_filtered) > 1:
-    #     gg_filtered = gg_filtered[:1]
-    gg_filtered = gg[:1]
+    if len(gg_filtered) > 1:
+        gg_filtered = gg_filtered[:1]
+    # gg_filtered = gg[:1]
 
     # 提取返回的抓取数值信息
     grasp_info = None
@@ -260,16 +260,18 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd
 
     # Open3D gripper geometries and show
     grippers = gg_filtered.to_open3d_geometry_list()
-    for grasp in gg_filtered:
-        frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
-        pose = np.eye(4, dtype=np.float64)
-        pose[:3, :3] = grasp.rotation_matrix
-        pose[:3, 3] = grasp.translation
-        safe_transform(frame, pose)
-        grippers.append(frame)
-    gripper_geoms = replace_grippers(vis, gripper_geoms, grippers, T)
-    vis.poll_events()
-    vis.update_renderer()
+    safe_transform(grippers, T) 
+    o3d.visualization.draw_geometries([pcd, *grippers], window_name='Current Grasp', width=800, height=600)
+    # for grasp in gg_filtered:
+    #     frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
+    #     pose = np.eye(4, dtype=np.float64)
+    #     pose[:3, :3] = grasp.rotation_matrix
+    #     pose[:3, 3] = grasp.translation
+    #     safe_transform(frame, pose)
+    #     grippers.append(frame)
+    # gripper_geoms = replace_grippers(vis, gripper_geoms, grippers, T)
+    # vis.poll_events()
+    # vis.update_renderer()
     return gripper_geoms, grasp_info
 
 
