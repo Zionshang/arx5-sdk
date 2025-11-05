@@ -226,26 +226,27 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, vis, pcd
     gg.sort_by_score()
 
     # 方向筛选
-    vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    angle_threshold = np.deg2rad(30.0)
-    keep_inds = []
-    for i, grasp in enumerate(gg):
-        R = grasp.rotation_matrix  # 3x3
-        approach_dir = R[:, 0]
-        cos_angle = float(np.dot(approach_dir, vertical))
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-        angle = np.arccos(cos_angle)
-        if angle < angle_threshold:
-            keep_inds.append(i)
-    if len(keep_inds) == 0:
-        print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
-        gg_filtered = gg
-    else:
-        gg_filtered = gg[keep_inds]
+    # vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    # angle_threshold = np.deg2rad(30.0)
+    # keep_inds = []
+    # for i, grasp in enumerate(gg):
+    #     R = grasp.rotation_matrix  # 3x3
+    #     approach_dir = R[:, 0]
+    #     cos_angle = float(np.dot(approach_dir, vertical))
+    #     cos_angle = np.clip(cos_angle, -1.0, 1.0)
+    #     angle = np.arccos(cos_angle)
+    #     if angle < angle_threshold:
+    #         keep_inds.append(i)
+    # if len(keep_inds) == 0:
+    #     print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
+    #     gg_filtered = gg
+    # else:
+    #     gg_filtered = gg[keep_inds]
 
     # 只取垂直筛选后的前1个（已经按分数降序排序）
-    if len(gg_filtered) > 1:
-        gg_filtered = gg_filtered[:1]
+    # if len(gg_filtered) > 1:
+    #     gg_filtered = gg_filtered[:1]
+    gg_filtered = gg[:1]
 
     # 提取返回的抓取数值信息
     grasp_info = None

@@ -105,10 +105,11 @@ def start_keyboard_teleop(controller: Arx5CartesianController):
     loop_cnt = 0
     while True:
         eef_state = controller.get_eef_state()
-        print(
-            f"Time elapsed: {time.monotonic() - start_time:.03f}s, x: {eef_state.pose_6d()[0]:.03f}, y: {eef_state.pose_6d()[1]:.03f}, z: {eef_state.pose_6d()[2]:.03f}",
-            end="\r",
-        )
+        # print(
+        #     f"Time elapsed: {time.monotonic() - start_time:.03f}s, x: {eef_state.pose_6d()[0]:.03f}, y: {eef_state.pose_6d()[1]:.03f}, z: {eef_state.pose_6d()[2]:.03f}",
+        #     end="\r",
+        # )
+        print(f"Teleop Control - Target EEF Pose: {target_pose_6d}")
         # keyboard state is in the format of (x y z roll pitch yaw)
         prev_directions = directions
         directions = np.zeros(7, dtype=np.float64)

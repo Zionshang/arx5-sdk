@@ -150,28 +150,28 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     base_rxyz = base_pose_np[3:]
 
     # 预抓取计算01：
-    pre_grasp_offset_01 = 0.1
+    pre_grasp_offset_01 = 0.15
     pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
     # # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
     # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
     # x_axis = rotation_mat[:, 0]
     # pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
     pre_grasp_pose_01[2] += pre_grasp_offset_01
-    rotation_mat_01 = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
+    rotation_mat_01 = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
     print(f"pre-rotation_matrix-01:\n{rotation_mat_01}")
 
     #预抓取计算02：
-    pre_grasp_offset_02 = 0.1
-    pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
+    # pre_grasp_offset_02 = 0.1
+    # pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
     # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
     # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
     # x_axis = rotation_mat[:, 0]
     # pre_grasp_pose_02[:3] -= x_axis * pre_grasp_offset_02
-    pre_grasp_pose_02[2] += pre_grasp_offset_02
-    rotation_mat_02 = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
-    print(f"pre-grasp_pose_02:\n{pre_grasp_pose_02}")
-    print(f"pre-rotation_matrix-02:\n{rotation_mat_02}")
+    # pre_grasp_pose_02[2] += pre_grasp_offset_02
+    # rotation_mat_02 = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
+    # print(f"pre-grasp_pose_02:\n{pre_grasp_pose_02}")
+    # print(f"pre-rotation_matrix-02:\n{rotation_mat_02}")
 
     controller, now, eef_state = arm_time_and_state()
     grip_max = controller.get_robot_config().gripper_width
@@ -181,7 +181,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
         build_eef_cmd(current_pose, grip_now, now),
         build_eef_cmd(current_pose, grip_max, now + 3.0),
         build_eef_cmd(pre_grasp_pose_01, grip_max, now + 8.0),
-        build_eef_cmd(pre_grasp_pose_02, grip_max, now + 11.0),
+        # build_eef_cmd(pre_grasp_pose_02, grip_max, now + 11.0),
     ])
 
 
@@ -272,6 +272,7 @@ def short_loop(args):
                          0.003068532940281973,
                          1.2510476636525898,
                          0.002855123071475998], dtype=float)
+    prep_pose = np.array([0.1482, 0.0, 0.2525, 0.0, 0.86, 0.0], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
 
@@ -315,6 +316,8 @@ def short_loop(args):
                     _, _, eef_state = arm_time_and_state()
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
+                    time.sleep(15)
+                    print(controller.get_eef_state().pose_6d())
                     time.sleep(1000)
                     break
                     # base_pose = convert_new(t, R, current_pose, rotation_matrix, translation_vector)

@@ -68,7 +68,7 @@ def convert_new(
     # 如果你确定是 "ZYX" ，则要 R.from_euler('ZYX',[rz_ee, ry_ee, rx_ee])。
     #
     # 以下演示用 'XYZ'，根据你实际情况来：
-    R_ee2base = R.from_euler('XYZ', [rx_ee, ry_ee, rz_ee], degrees=False).as_matrix()
+    R_ee2base = R.from_euler('xyz', [rx_ee, ry_ee, rz_ee], degrees=False).as_matrix()
 
     T_ee2base = np.eye(4, dtype=float)
     T_ee2base[:3, :3] = R_ee2base
@@ -93,7 +93,7 @@ def convert_new(
     #   再次强调，具体要什么顺序，需要和你的机械臂驱动匹配。
     #   演示这里输出 "XYZ" 顺序的 [rx, ry, rz]。
     #
-    final_euler = R.from_matrix(final_rot_mat).as_euler('XYZ', degrees=False)
+    final_euler = R.from_matrix(final_rot_mat).as_euler('xyz', degrees=False)
     base_rx, base_ry, base_rz = final_euler
 
     # 拼装输出 [x, y, z, rx, ry, rz]

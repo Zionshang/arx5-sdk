@@ -3,6 +3,29 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from scipy.spatial.transform import Rotation
+
+
+def Rx(a):
+	c, s = np.cos(a), np.sin(a)
+	return np.array([[1, 0, 0],
+				     [0, c, -s], 
+				     [0, s, c]], dtype=float)
+
+
+def Ry(a):
+	c, s = np.cos(a), np.sin(a)
+	return np.array([[c, 0, s], 
+				     [0, 1, 0],
+				     [-s, 0, c]], dtype=float)
+
+
+def Rz(a):
+	c, s = np.cos(a), np.sin(a)
+	return np.array([[c, -s, 0], 
+				     [s, c, 0], 
+				     [0, 0, 1]], dtype=float)
+
 
 def set_axes_equal(ax):
     # 让 3D 坐标轴比例相等
@@ -18,23 +41,37 @@ def set_axes_equal(ax):
 
 if __name__ == "__main__":
     # 1) 定义旋转矩阵 R 和平移 t（示例：先绕Z 30°，再绕Y 20°，再绕X 10°）
-    def rot_x(a): 
-        c, s = np.cos(a), np.sin(a)
-        return np.array([[1,0,0],[0,c,-s],[0,s,c]])
-    def rot_y(a):
-        c, s = np.cos(a), np.sin(a)
-        return np.array([[c,0,s],[0,1,0],[-s,0,c]])
-    def rot_z(a):
-        c, s = np.cos(a), np.sin(a)
-        return np.array([[c,-s,0],[s,c,0],[0,0,1]])
-    R = rot_y(1.5181385170733657) @ rot_y(0.2492888226322032) @ rot_x(-1.7258007925283423)
 
-    R = np.array([[ 0.25098,  0.92983,  0.2691 ],
- [-0.78852,  0.35764, -0.50034],
- [-0.56147 ,-0.08662 , 0.82295]])
+    # R1 = np.array([[ 0.07559 , -0.24835 ,  0.96572],
+    #               [ 0.2812  , -0.92387 , -0.2596 ],
+    #               [ 0.95667 ,  0.29119 , -0.     ]])
+    # t1 = np.array([0.05454, 0.00022, 0.286])  # 平移（单位：米）
 
+    # # 构建齐次变换矩阵T1
+    # T1 = np.eye(4)
+    # T1[:3, :3] = R1  # 旋转矩阵部分
+    # T1[:3, 3] = t1   # 平移向量部分
 
-    t = np.array([0.41321, 0.04455, 0.11441])  # 平移（单位：米）
+    # R2 = np.array([[-0.02489131, -0.16662419, 0.98570624],
+    #                 [-0.99968, 0.00859452, -0.02379136], 
+    #                 [-0.00450745, -0.98598302, -0.1667848]])
+    # t2 = np.array([-0.0702653, 0.03149889, 0.06295003])
+    # T2 = np.eye(4)
+    # T2[:3, :3] = R2
+    # T2[:3, 3] = t2
+
+    # T = T2 @ T1 
+
+    # R = T[:3, :3]
+    # t = T[:3, 3]
+
+    t = np.array([0.42505, -0.01749 , 0.16471])
+    R0 = Rotation.from_euler('zyx', [1.02, 0.58, -0.4], degrees=False).as_matrix()
+    R = Rz(-0.4) @ Ry(0.58) @ Rx(1.02)
+    print(np.allclose(R0, R))
+#     R = np.array([[-0.22568 , 0.88379 ,-0.40985],
+#  [-0.26148 ,-0.46022 ,-0.84843],
+#  [-0.93845, -0.0843 ,  0.33496]])
 
     # 2) 轴长度
     L = 0.1  # 每根轴的显示长度
