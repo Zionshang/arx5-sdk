@@ -224,7 +224,7 @@ def short_loop(args):
     # 可视化
     # vis, pcd, T = init_vis()
     pcd = o3d.geometry.PointCloud()
-    gripper_geoms = []
+    # gripper_geoms = []
     last_grasp_info = None
     seg_vis = None
 
@@ -287,8 +287,8 @@ def short_loop(args):
                     # gripper_geoms = []
                     last_grasp_info = None
                 else:
-                    gripper_geoms, last_grasp_info = gp.run_graspnet_for_mask(
-                        net, device, color, depth, camera_info, args, pcd, gripper_geoms, T_o3d, workspace_mask
+                    last_grasp_info = gp.run_graspnet_for_mask(
+                        net, device, color, depth, camera_info, args, pcd, T_o3d, workspace_mask
                     )
             elif key == ord('z'):
                 print("\n===== Current Grasp (camera frame) =====")

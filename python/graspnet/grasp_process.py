@@ -187,7 +187,7 @@ def yolo_get_mask(yolo_model, color, yolo_predict_params):
         return None, None
 
 
-def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, gripper_geoms, T, workspace_mask):
+def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask):
     # prepare inputs
     end_points, cloud, cloud_masked, color_masked = prepare_end_points(color, depth, camera_info, args.num_point, device, workspace_mask=workspace_mask)
 
@@ -272,7 +272,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, gri
     # gripper_geoms = replace_grippers(vis, gripper_geoms, grippers, T)
     # vis.poll_events()
     # vis.update_renderer()
-    return gripper_geoms, grasp_info
+    return grasp_info
 
 
 def main():
