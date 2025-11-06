@@ -147,7 +147,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
     print(f"width (m): {width:.5f}")
     # 抓取位姿计算
-    base_pose = convert_new(grasp_translation, grasp_rotation, current_pose, handeye_rotation, handeye_translation)
+    base_pose, _ = convert_new(grasp_translation, grasp_rotation, current_pose, handeye_rotation, handeye_translation)
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
     # 正式执行部分
@@ -300,8 +300,12 @@ def short_loop(args):
                     # gripper_geoms = []
                     last_grasp_info = None
                 else:
+                    # 基座系方向筛选所需：当前末端位姿与手眼标定
+                    _, _, eef_state = arm_time_and_state()
+                    current_pose_ = eef_state.pose_6d().copy()
                     last_grasp_info = gp.run_graspnet_for_mask(
-                        net, device, color, depth, camera_info, args, pcd, T_o3d, workspace_mask
+                        net, device, color, depth, camera_info, args, pcd, T_o3d, workspace_mask,
+                        current_pose_, np.array(handeye_rotation, dtype=float), np.array(handeye_translation, dtype=float)
                     )
             elif key == ord('z'):
                 print("\n===== Current Grasp (camera frame) =====")
@@ -309,7 +313,6 @@ def short_loop(args):
                     grasp_translation = last_grasp_info['translation']
                     grasp_rotation = last_grasp_info['rotation_matrix']
                     grasp_width = last_grasp_info['width']
-                    _, _, eef_state = arm_time_and_state()
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
                     time.sleep(15)

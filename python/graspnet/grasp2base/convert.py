@@ -109,4 +109,4 @@ def convert_new(
         base_rz
     ]
 
-    return result
+    return result, final_rot_mat

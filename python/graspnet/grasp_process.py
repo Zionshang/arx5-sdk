@@ -32,6 +32,7 @@ from graspnet import GraspNet, pred_decode
 from graspnetAPI import GraspGroup
 from utils.data_utils import CameraInfo, create_point_cloud_from_depth_image
 from utils.collision_detector import ModelFreeCollisionDetector
+from grasp2base.convert import convert_new
 # 轻量级目标检测/分割：使用仓库中 yolo11 的 ultralytics 接口
 try:
     from ultralytics import YOLO
@@ -187,7 +188,8 @@ def yolo_get_mask(yolo_model, color, yolo_predict_params):
         return None, None
 
 
-def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask):
+def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,
+                          current_ee_pose=None, handeye_rot=None, handeye_trans=None):
     # prepare inputs
     end_points, cloud, cloud_masked, color_masked = prepare_end_points(color, depth, camera_info, args.num_point, device, workspace_mask=workspace_mask)
 
@@ -225,36 +227,40 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     gg.nms()
     gg.sort_by_score()
 
-    # 方向筛选（双条件）：
-    # 1) 抓取前进方向（R的x轴）与相机坐标系的“垂直向下”方向夹角 < 30°（已有逻辑）
-    # 2) 抓取姿态的 y 轴与相机的“水平向左”方向（-x）夹角 < 90°（即点积 > 0）
-    cam_down = np.array([0.0, 0.0, 1.0], dtype=np.float32)   # 相机视角下的“向下”方向
-    cam_left = np.array([1.0, 0.0, 0.0], dtype=np.float32)  # 相机视角下的“向左”方向
+    # 方向筛选（在基座标系下）：
+    # 要求：
+    #  - 抓取前进方向（x轴）与基座 -Z 夹角 < 30°
+    #  - 抓取 y 轴与基座 +Y 夹角 < 110°
+
+    base_down = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+    base_y = np.array([0.0, 1.0, 0.0], dtype=np.float32)
     thr_down = np.deg2rad(30.0)
-    # 向左夹角阈值（弧度）
-    thr_left = np.deg2rad(100.0)
+    thr_left = np.deg2rad(110.0)
 
     keep_inds = []
     for i, grasp in enumerate(gg):
-        Rg = grasp.rotation_matrix  # 3x3
-        approach_dir = Rg[:, 0]     # 抓取前进方向（x轴）
-        grasp_y = Rg[:, 1]          # 抓取 y 轴
+        # 将抓取姿态转换到基座系，只取旋转矩阵
+        t_grasp = grasp.translation
+        R_grasp = grasp.rotation_matrix
+        _, R_base = convert_new(t_grasp, R_grasp, current_ee_pose, handeye_rot, handeye_trans, gripper_length=0.0)
 
-        # 条件1：与向下夹角 < 30°
-        cos1 = float(np.dot(approach_dir, cam_down))
+        x_dir = R_base[:, 0]
+        y_dir = R_base[:, 1]
+
+        cos1 = float(np.dot(x_dir, base_down))
         cos1 = np.clip(cos1, -1.0, 1.0)
         ang1 = np.arccos(cos1)
 
-        # 条件2：与向左夹角 < 100°
-        cos2 = float(np.dot(grasp_y, cam_left))
+        cos2 = float(np.dot(y_dir, base_y))
         cos2 = np.clip(cos2, -1.0, 1.0)
         ang2 = np.arccos(cos2)
 
         if (ang1 < thr_down) and (ang2 < thr_left):
+        # if ang2 < thr_left:
             keep_inds.append(i)
 
     if len(keep_inds) == 0:
-        print("\n[Warning] No grasp predictions meeting orientation constraints. Using all predictions.")
+        print("\n[Warning] No grasp predictions meeting base-frame orientation constraints. Using all predictions.")
         gg_filtered = gg
     else:
         gg_filtered = gg[keep_inds]
