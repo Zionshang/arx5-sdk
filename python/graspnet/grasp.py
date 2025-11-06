@@ -79,7 +79,7 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
     return cmd
 
 # --------------------------- 小工具：初始化 ---------------------------
-def init_yolo(root_dir: str, target_class_id: int = 64):
+def init_yolo(root_dir: str, target_class_id: int = 46):
     """初始化 YOLO 分割模型（若不可用则返回 None）。
 
     返回 (yolo_model, yolo_predict_params)
@@ -105,6 +105,7 @@ def init_realsense(color_w: int = 640, color_h: int = 480):
     config.enable_stream(rs.stream.depth, color_w, color_h, rs.format.z16, 30)
     align = rs.align(rs.stream.color)
     pipeline.start(config)
+
     return pipeline, align
 
 
@@ -161,7 +162,10 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
     # x_axis = rotation_mat[:, 0]
     # pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
-    pre_grasp_pose_01[2] += pre_grasp_offset_01
+    # pre_grasp_pose_01[2] += pre_grasp_offset_01
+    rotation_mat = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
+    x_axis = rotation_mat[:, 0]
+    pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
     rotation_mat_01 = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
     print(f"pre-rotation_matrix-01:\n{rotation_mat_01}")
@@ -179,13 +183,12 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     # print(f"pre-rotation_matrix-02:\n{rotation_mat_02}")
 
     controller, now, eef_state = arm_time_and_state()
-    grip_max = controller.get_robot_config().gripper_width
+    # grip_max = controller.get_robot_config().gripper_width
     grip_now = eef_state.gripper_pos
 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(current_pose, grip_max, now + 3.0),
-        build_eef_cmd(pre_grasp_pose_01, grip_max, now + 8.0),
+        build_eef_cmd(pre_grasp_pose_01, grip_now, now + 5.0),
         # build_eef_cmd(pre_grasp_pose_02, grip_max, now + 11.0),
     ])
 
@@ -193,17 +196,25 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 
 
 # --------------------------- 主循环（精炼） ---------------------------
-def capture_frame(pipeline: rs.pipeline, align: rs.align) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-    """Grab a synchronized color/depth frame pair from the RealSense pipeline."""
-    frames = pipeline.wait_for_frames()
-    aligned = align.process(frames)
-    color_frame = aligned.get_color_frame()
-    depth_frame = aligned.get_depth_frame()
-    if not color_frame or not depth_frame:
+def capture_frame(pipeline: Any, align: Any, timeout_ms: int = 10000) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    """Grab a synchronized color/depth frame pair from the RealSense pipeline.
+    超时或偶发异常时返回 (None, None) 而不是抛出，让上层继续循环，避免程序退出导致机械臂进入阻尼。
+    """
+    try:
+        frames = pipeline.wait_for_frames(timeout_ms)
+        if not frames:
+            return None, None
+        aligned = align.process(frames)
+        color_frame = aligned.get_color_frame()
+        depth_frame = aligned.get_depth_frame()
+        if not color_frame or not depth_frame:
+            return None, None
+        color = np.asanyarray(color_frame.get_data())
+        depth = np.asanyarray(depth_frame.get_data())
+        return color, depth
+    except Exception:
+        # 取帧超时或摄像头临时不可用，返回空让主循环继续
         return None, None
-    color = np.asanyarray(color_frame.get_data())
-    depth = np.asanyarray(depth_frame.get_data())
-    return color, depth
 
 
 def short_loop(args):
@@ -212,14 +223,9 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=64)
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=46)
     if yolo_model is None:
         print('[Info] YOLO not available; skipping segmentation.')
-
-    # RealSense + 相机内参
-    color_w, color_h = 640, 480
-    pipeline, align = init_realsense(color_w, color_h)
-    camera_info = make_camera_info(color_w, color_h)
 
     # 可视化
     # vis, pcd, T = init_vis()
@@ -232,27 +238,34 @@ def short_loop(args):
     controller = init_arm_controller()
     controller.reset_to_home()
     # 预抓取位姿
-    prep_pose = np.array([0.3808947838198619,
-                         0.0010951536627964757,
-                         0.23226317113384085,
-                         0.003068532940281973,
-                         1.2510476636525898,
-                         0.002855123071475998], dtype=float)
-    prep_pose = np.array([0.1482, 0.0, 0.2525, 0.0, 0.86, 0.0], dtype=float)
+    # prep_pose = np.array([0.3808947838198619,
+    #                      0.0010951536627964757,
+    #                      0.23226317113384085,
+    #                      0.003068532940281973,
+    #                      1.2510476636525898,
+    #                      0.002855123071475998], dtype=float)
+    prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
 
     controller.set_eef_traj([
         build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-        build_eef_cmd(prep_pose, grip_home, start_ts + 5.0),
-        build_eef_cmd(prep_pose, grip_max, start_ts + 8.0),
+        build_eef_cmd(prep_pose, grip_home, start_ts + 6.0),
+        build_eef_cmd(prep_pose, grip_max, start_ts + 10.0),
     ])
+
+    # RealSense + 相机内参
+    color_w, color_h = 640, 480
+    camera_info = make_camera_info(color_w, color_h)
+    pipeline, align = init_realsense(color_w, color_h)
+
 
     try:
         while True:
             color, depth = capture_frame(pipeline, align)
             if color is None or depth is None:
+                print("[Warn] 未能获取相机帧，跳过本次循环。")
                 continue
 
             cv2.imshow('Color (raw)', color)
@@ -300,9 +313,11 @@ def short_loop(args):
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
                     time.sleep(15)
-                    print(controller.get_eef_state().pose_6d())
-                    time.sleep(10)
-                    break
+                    print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
+                    # time.sleep(20)
+                    # controller.reset_to_home()
+                    # time.sleep(10)
+                    # break
                 else:
                     print("No grasp available yet.")
 

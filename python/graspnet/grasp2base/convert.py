@@ -34,7 +34,10 @@ def convert_new(
 
     # =============== 2) 在 GraspNet 的输出上做「轴对齐 + 夹爪补偿」 ================
 
-    R_align = np.eye(3, dtype=float)
+    # 轴对齐：保持 x 轴不变，y 轴取反，z 轴取反（等价于绕 x 轴旋转 180°）
+    R_align = np.array([[1.0,  0.0,  0.0],
+                        [0.0, -1.0,  0.0],
+                        [0.0,  0.0, -1.0]], dtype=float)
 
     T_align = np.eye(4, dtype=float)
     T_align[:3, :3] = R_align

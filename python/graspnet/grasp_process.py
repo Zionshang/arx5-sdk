@@ -225,28 +225,42 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     gg.nms()
     gg.sort_by_score()
 
-    # 方向筛选
-    vertical = np.array([0.0, 0.0, 1.0], dtype=np.float32)
-    angle_threshold = np.deg2rad(30.0)
+    # 方向筛选（双条件）：
+    # 1) 抓取前进方向（R的x轴）与相机坐标系的“垂直向下”方向夹角 < 30°（已有逻辑）
+    # 2) 抓取姿态的 y 轴与相机的“水平向左”方向（-x）夹角 < 90°（即点积 > 0）
+    cam_down = np.array([0.0, 0.0, 1.0], dtype=np.float32)   # 相机视角下的“向下”方向
+    cam_left = np.array([1.0, 0.0, 0.0], dtype=np.float32)  # 相机视角下的“向左”方向
+    thr_down = np.deg2rad(30.0)
+    # 向左夹角阈值（弧度）
+    thr_left = np.deg2rad(100.0)
+
     keep_inds = []
     for i, grasp in enumerate(gg):
-        R = grasp.rotation_matrix  # 3x3
-        approach_dir = R[:, 0]
-        cos_angle = float(np.dot(approach_dir, vertical))
-        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-        angle = np.arccos(cos_angle)
-        if angle < angle_threshold:
+        Rg = grasp.rotation_matrix  # 3x3
+        approach_dir = Rg[:, 0]     # 抓取前进方向（x轴）
+        grasp_y = Rg[:, 1]          # 抓取 y 轴
+
+        # 条件1：与向下夹角 < 30°
+        cos1 = float(np.dot(approach_dir, cam_down))
+        cos1 = np.clip(cos1, -1.0, 1.0)
+        ang1 = np.arccos(cos1)
+
+        # 条件2：与向左夹角 < 100°
+        cos2 = float(np.dot(grasp_y, cam_left))
+        cos2 = np.clip(cos2, -1.0, 1.0)
+        ang2 = np.arccos(cos2)
+
+        if (ang1 < thr_down) and (ang2 < thr_left):
             keep_inds.append(i)
+
     if len(keep_inds) == 0:
-        print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
+        print("\n[Warning] No grasp predictions meeting orientation constraints. Using all predictions.")
         gg_filtered = gg
     else:
         gg_filtered = gg[keep_inds]
 
-    # 只取垂直筛选后的前1个（已经按分数降序排序）
-    if len(gg_filtered) > 1:
-        gg_filtered = gg_filtered[:1]
-    # gg_filtered = gg[:1]
+    # 已按分数降序，取满足方向约束中的最高分一个
+    gg_filtered = gg_filtered[:1]
 
     # 提取返回的抓取数值信息
     grasp_info = None
@@ -258,10 +272,20 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
             'width': float(g0.width),
         }
 
-    # Open3D gripper geometries and show
+    # Open3D gripper geometries and show（同时可视化抓取坐标系）
     grippers = gg_filtered.to_open3d_geometry_list()
-    safe_transform(grippers, T) 
-    o3d.visualization.draw_geometries([pcd, *grippers], window_name='Current Grasp', width=800, height=600)
+    for g, grasp in zip(grippers, gg_filtered):
+        print('可视化抓取:')
+        # gripper 模型（已在相机坐标，应用显示变换 T）
+        safe_transform(g, T)
+        # 坐标系：用预测的 R,t 构造位姿，再应用显示变换 T
+        frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
+        pose = np.eye(4, dtype=np.float64)
+        pose[:3, :3] = grasp.rotation_matrix
+        pose[:3, 3] = grasp.translation
+        safe_transform(frame, pose)
+        safe_transform(frame, T)
+        o3d.visualization.draw_geometries([pcd, g, frame], window_name='Current Grasp', width=800, height=600)
     # for grasp in gg_filtered:
     #     frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
     #     pose = np.eye(4, dtype=np.float64)
