@@ -76,7 +76,7 @@ def main(model: str, interface: str):
     print("Initializing Joystick controller...")
     joystick = JoystickRobotics(
         home_position=controller.get_home_pose().tolist()[:3],
-        ee_limit=[[0.0, -0.5, -0.5, -1.8, -1.6, -1.6], [0.5, 0.5, 0.5, 1.8, 1.6, 1.6]],
+        ee_limit=[[0.0, -0.5, -0.5, -1.8, -1.6, -1.6], [0.7, 0.5, 0.5, 1.8, 1.6, 1.6]],
         gripper_limit=[0.0, robot_config.gripper_width],
     )
     print("Joystick calibration completed.")

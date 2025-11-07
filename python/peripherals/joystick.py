@@ -28,6 +28,7 @@ class JoystickRobotics:
         euler_reverse: List[int] = [1, 1, 1],
         home_position: List[float] = [0.0, 0.0, 0.0],
         home_euler: List[float] = [0.0, 0.0, 0.0],
+        home_gripper: float = 0.0,
         ee_limit: List[List[float]] = [[-10, -10, -10, -10, -10, -10], [10, 10, 10, 10, 10, 10]],
         gripper_limit: List[float] = [0.0, 1.0],
         loop_period: float = 0.01,
@@ -44,7 +45,7 @@ class JoystickRobotics:
         # 状态
         self.position = list(home_position)
         self.euler = list(home_euler)  # roll, pitch, yaw
-        self.gripper = float(gripper_limit[0])
+        self.gripper = home_gripper
         self.control_button = XboxButton.NONE
 
         # 参数
@@ -122,10 +123,7 @@ class JoystickRobotics:
                     # 平移（左摇杆，Y 上，A 下）
                     self.position[0] += self.trans_step[0] * (-l_stick_v) * self.trans_reverse[0]
                     self.position[1] += self.trans_step[1] * (-l_stick_h) * self.trans_reverse[1]
-                    if buttons[XboxButton.Y]:
-                        self.position[2] += self.trans_step[2] * self.trans_reverse[2]
-                    if buttons[XboxButton.A]:
-                        self.position[2] -= self.trans_step[2] * self.trans_reverse[2]
+                    self.position[2] += self.trans_step[2] * (hat_v) * self.trans_reverse[2]
 
                     # 姿态（右摇杆：水平=roll，垂直=pitch；X/B 调 yaw）
                     self.euler[0] += self.orient_step[0] * (r_stick_h) * self.euler_reverse[0]  # roll
