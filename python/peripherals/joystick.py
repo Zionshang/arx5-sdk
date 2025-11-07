@@ -1,15 +1,28 @@
 import threading
 import time
-from typing import List
+from typing import List, Tuple, Dict
+from enum import Enum
 
 import pygame
+
+
+class XboxButton(Enum):
+    A = "A"
+    B = "B"
+    X = "X"
+    Y = "Y"
+    LB = "LB"
+    RB = "RB"
+    VIEW = "VIEW"
+    MENU = "MENU"
+    NONE = "NONE"
 
 
 class JoystickRobotics:
     def __init__(
         self,
         trans_step: List[float] = [0.001, 0.001, 0.001],
-        orient_step: List[float] = [0.01, 0.01, 0.02],  # roll, pitch, yaw（rad/step）
+        orient_step: List[float] = [0.002, 0.002, 0.002],  # roll, pitch, yaw（rad/step）
         gripper_step: float = 0.01,
         trans_reverse: List[int] = [1, 1, 1],
         euler_reverse: List[int] = [1, 1, 1],
@@ -32,7 +45,7 @@ class JoystickRobotics:
         self.position = list(home_position)
         self.euler = list(home_euler)  # roll, pitch, yaw
         self.gripper = float(gripper_limit[0])
-        self.control_button = 0
+        self.control_button = XboxButton.NONE
 
         # 参数
         self.trans_step = list(trans_step)
@@ -57,6 +70,7 @@ class JoystickRobotics:
     def _apply_deadzone(self, v: float, dz: float) -> float:
         return 0.0 if abs(v) < dz else v
 
+    # 获取摇杆轴
     def _axes(self) -> List[float]:
         l_stick_h_raw = self._js.get_axis(0)
         l_stick_v_raw = self._js.get_axis(1)
@@ -68,17 +82,22 @@ class JoystickRobotics:
         r_stick_v = self._apply_deadzone(r_stick_v_raw, 0.1)
         return [l_stick_h, l_stick_v, r_stick_h, r_stick_v]
 
-    def _buttons(self) -> List[int]:
-        a = self._js.get_button(0)
-        b = self._js.get_button(1)
-        x = self._js.get_button(2)
-        y = self._js.get_button(3)
-        lb = self._js.get_button(4)
-        rb = self._js.get_button(5)
-        select = self._js.get_button(6)
-        start = self._js.get_button(7)
-        home = self._js.get_button(8)
-        return [a, b, x, y, lb, rb, select, start, home]
+    # 获取按钮状态
+    def _buttons(self) -> Dict[XboxButton, int]:
+        return {
+            XboxButton.A: self._js.get_button(0),
+            XboxButton.B: self._js.get_button(1),
+            XboxButton.X: self._js.get_button(2),
+            XboxButton.Y: self._js.get_button(3),
+            XboxButton.LB: self._js.get_button(4),
+            XboxButton.RB: self._js.get_button(5),
+            XboxButton.VIEW: self._js.get_button(6),
+            XboxButton.MENU: self._js.get_button(7),
+        }
+
+    # 获取十字键状态
+    def _hats(self) -> Tuple[float, float]:
+        return self._js.get_hat(0)
 
     def _clamp_pose(self) -> None:
         # 位置 xyz
@@ -96,42 +115,42 @@ class JoystickRobotics:
             try:
                 pygame.event.pump()
                 l_stick_h, l_stick_v, r_stick_h, r_stick_v = self._axes()
-                a, b, x, y, lb, rb, select, start, home = self._buttons()
+                buttons = self._buttons()
+                hat_h, hat_v = self._hats()
 
                 with self._lock:
                     # 平移（左摇杆，Y 上，A 下）
                     self.position[0] += self.trans_step[0] * (-l_stick_v) * self.trans_reverse[0]
                     self.position[1] += self.trans_step[1] * (-l_stick_h) * self.trans_reverse[1]
-                    if y:
+                    if buttons[XboxButton.Y]:
                         self.position[2] += self.trans_step[2] * self.trans_reverse[2]
-                    if a:
+                    if buttons[XboxButton.A]:
                         self.position[2] -= self.trans_step[2] * self.trans_reverse[2]
 
                     # 姿态（右摇杆：水平=roll，垂直=pitch；X/B 调 yaw）
                     self.euler[0] += self.orient_step[0] * (-r_stick_h) * self.euler_reverse[0]  # roll
                     self.euler[1] += self.orient_step[1] * (-r_stick_v) * self.euler_reverse[1]  # pitch
-                    if x:
-                        self.euler[2] -= self.orient_step[2] * self.euler_reverse[2]
-                    if b:
-                        self.euler[2] += self.orient_step[2] * self.euler_reverse[2]
+                    self.euler[2] += self.orient_step[2] * (hat_h) * self.euler_reverse[2]  # yaw
 
                     # 夹爪（LB 关，RB 开）
-                    if lb:
+                    if buttons[XboxButton.LB]:
                         self.gripper -= self.gripper_step
-                    if rb:
+                    if buttons[XboxButton.RB]:
                         self.gripper += self.gripper_step
 
                     self._clamp_pose()
 
-                    # 按住 Home 键，缓慢回到 home 位置
-                    if home:
+                    # 按住 View 键，缓慢回到 home 位置
+                    if buttons[XboxButton.VIEW]:
                         self._go_to_home()
 
                     # control button
-                    if select:
-                        self.control_button = 1
-                    elif start:
-                        self.control_button = 2
+                    if buttons[XboxButton.X]:
+                        self.control_button = XboxButton.X
+                    elif buttons[XboxButton.B]:
+                        self.control_button = XboxButton.B
+                    else:
+                        self.control_button = XboxButton.NONE
 
                 time.sleep(self.loop_period)
             except Exception:
@@ -181,7 +200,7 @@ class JoystickRobotics:
             x, y, z = self.position
             roll, pitch, yaw = self.euler
             posture = [x, y, z, roll, pitch, yaw]
-            return posture, float(self.gripper), int(self.control_button)
+            return posture, float(self.gripper), XboxButton(self.control_button)
 
     def stop(self) -> None:
         self._running = False
@@ -191,8 +210,6 @@ class JoystickRobotics:
 
 if __name__ == "__main__":
     js = JoystickRobotics(
-        trans_step=[0.002, 0.002, 0.002],
-        orient_step=[0.02, 0.02, 0.03],
         ee_limit=[[0.0, -0.5, -0.5, -1.3, -1.3, -1.3], [0.5, 0.5, 0.5, 1.3, 1.3, 1.3]],
     )
 

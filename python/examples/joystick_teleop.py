@@ -14,7 +14,7 @@ from arx5_interface import (
     LogLevel,
 )
 
-from peripherals.joystick import JoystickRobotics
+from peripherals.joystick import JoystickRobotics, XboxButton
 
 import time
 import click
@@ -41,7 +41,7 @@ def start_joystick_teleop(controller: Arx5CartesianController, joystick: Joystic
         )
 
         # Check for exit command
-        if control_button == 2:
+        if control_button == XboxButton.X or control_button == XboxButton.B:
             print("\nExit buttons pressed. Resetting to home and exiting...")
             break  # Exit the control loop
 
@@ -70,7 +70,6 @@ def main(model: str, interface: str):
     controller.reset_to_home()
 
     robot_config = controller.get_robot_config()
-    gain = Gain(robot_config.joint_dof)
     controller.set_log_level(LogLevel.DEBUG)
 
     # Initialize Joystick (includes 2s calibration)
