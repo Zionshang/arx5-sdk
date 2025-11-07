@@ -22,8 +22,8 @@ class JoystickRobotics:
     def __init__(
         self,
         trans_step: List[float] = [0.001, 0.001, 0.001],
-        orient_step: List[float] = [0.002, 0.002, 0.002],  # roll, pitch, yaw（rad/step）
-        gripper_step: float = 0.01,
+        orient_step: List[float] = [0.005, 0.005, 0.005],  # roll, pitch, yaw（rad/step）
+        gripper_step: float = 0.001,
         trans_reverse: List[int] = [1, 1, 1],
         euler_reverse: List[int] = [1, 1, 1],
         home_position: List[float] = [0.0, 0.0, 0.0],
@@ -76,10 +76,10 @@ class JoystickRobotics:
         l_stick_v_raw = self._js.get_axis(1)
         r_stick_h_raw = self._js.get_axis(3)
         r_stick_v_raw = self._js.get_axis(4)
-        l_stick_h = self._apply_deadzone(l_stick_h_raw, 0.1)
-        l_stick_v = self._apply_deadzone(l_stick_v_raw, 0.1)
-        r_stick_h = self._apply_deadzone(r_stick_h_raw, 0.1)
-        r_stick_v = self._apply_deadzone(r_stick_v_raw, 0.1)
+        l_stick_h = self._apply_deadzone(l_stick_h_raw, 0.2)
+        l_stick_v = self._apply_deadzone(l_stick_v_raw, 0.2)
+        r_stick_h = self._apply_deadzone(r_stick_h_raw, 0.2)
+        r_stick_v = self._apply_deadzone(r_stick_v_raw, 0.2)
         return [l_stick_h, l_stick_v, r_stick_h, r_stick_v]
 
     # 获取按钮状态
@@ -128,9 +128,9 @@ class JoystickRobotics:
                         self.position[2] -= self.trans_step[2] * self.trans_reverse[2]
 
                     # 姿态（右摇杆：水平=roll，垂直=pitch；X/B 调 yaw）
-                    self.euler[0] += self.orient_step[0] * (-r_stick_h) * self.euler_reverse[0]  # roll
+                    self.euler[0] += self.orient_step[0] * (r_stick_h) * self.euler_reverse[0]  # roll
                     self.euler[1] += self.orient_step[1] * (-r_stick_v) * self.euler_reverse[1]  # pitch
-                    self.euler[2] += self.orient_step[2] * (hat_h) * self.euler_reverse[2]  # yaw
+                    self.euler[2] += self.orient_step[2] * (-hat_h) * self.euler_reverse[2]  # yaw
 
                     # 夹爪（LB 关，RB 开）
                     if buttons[XboxButton.LB]:
