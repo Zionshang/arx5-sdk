@@ -38,10 +38,10 @@ if CUR_DIR not in sys.path:
     sys.path.insert(0, CUR_DIR)
 import grasp_process as gp
 #手眼标定外参
-handeye_rotation = [[-0.02489131, -0.16662419, 0.98570624],
-                   [-0.99968, 0.00859452, -0.02379136],
-                   [-0.00450745, -0.98598302, -0.1667848]]
-handeye_translation = [-0.0702653, 0.03149889, 0.06295003]
+handeye_rotation = [[ 0.00712773,-0.1427361, 0.98973512],
+ [-0.99953609,-0.0303254  ,0.00282489],
+ [ 0.0296109 , -0.9892961  , -0.14288604]]
+handeye_translation = [-0.09242122,0.02278331,0.08079877]
 
 T_o3d = np.eye(4, dtype=np.float64)
 T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
@@ -146,8 +146,16 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     print(f"grasp_translation (m):\n{grasp_translation}")
     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
     print(f"width (m): {width:.5f}")
-    # 抓取位姿计算
-    base_pose, _ = convert_new(grasp_translation, grasp_rotation, current_pose, handeye_rotation, handeye_translation)
+    # 抓取位姿计算（夹爪补偿：沿抓取前向 -X 方向回退 10cm）
+    # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
+    base_pose, _ = convert_new(
+        grasp_translation,
+        grasp_rotation,
+        current_pose,
+        handeye_rotation,
+        handeye_translation,
+        gripper_length=0.0,
+    )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
     # 正式执行部分

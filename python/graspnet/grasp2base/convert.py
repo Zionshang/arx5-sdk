@@ -45,7 +45,7 @@ def convert_new(
     # gripper_length 补偿：新坐标系 X 为抓取主轴，让末端后退 (沿 -X 方向)
     # 若想“探出去”，可以改成 [+gripper_length, 0, 0]
     #
-    T_align[:3, 3] = [-gripper_length, 0, 0]
+    T_align[:3, 3] = [0, 0, -gripper_length]
 
     # 得到【修正后的】抓取姿态 (相机坐标系下)
     T_gripper2cam = T_grasp2cam @ T_align

@@ -267,7 +267,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
 
     # 已按分数降序，取满足方向约束中的最高分一个
     k = min(20, len(gg))
-    gg_filtered = gg[:k]
+    gg_filtered = gg[:1]
     # gg_filtered = gg_filtered[:1]
 
     # 提取返回的抓取数值信息
