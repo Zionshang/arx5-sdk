@@ -44,12 +44,11 @@ def convert_new(
 
     # gripper_length 补偿：新坐标系 X 为抓取主轴，让末端后退 (沿 -X 方向)
     # 若想“探出去”，可以改成 [+gripper_length, 0, 0]
-    #
-    T_align[:3, 3] = [0, 0, -gripper_length]
+    T_align[:3, 3] = [-gripper_length, 0, 0]
 
     # 得到【修正后的】抓取姿态 (相机坐标系下)
     T_gripper2cam = T_grasp2cam @ T_align
-
+    # T_gripper2cam = T_align @ T_grasp2cam
     # =============== 3) 手眼标定：构造【相机坐标系 → 末端坐标系】 ================
     #   如果实际标定结果是 (末端→相机)，就需要再取逆；此处假设 handeye_rot, handeye_trans
     #   的确代表 “相机→末端”。

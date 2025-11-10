@@ -38,10 +38,10 @@ if CUR_DIR not in sys.path:
     sys.path.insert(0, CUR_DIR)
 import grasp_process as gp
 #手眼标定外参
-handeye_rotation = [[ 0.00712773,-0.1427361, 0.98973512],
- [-0.99953609,-0.0303254  ,0.00282489],
- [ 0.0296109 , -0.9892961  , -0.14288604]]
-handeye_translation = [-0.09242122,0.02278331,0.08079877]
+handeye_rotation = [[-0.02489131, -0.16662419 , 0.98570624],
+ [-0.99968  ,   0.00859452, -0.02379136],
+ [-0.00450745, -0.98598302, -0.1667848 ]]
+handeye_translation = [-0.09760795,0.02448454,0.0883561]
 
 T_o3d = np.eye(4, dtype=np.float64)
 T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
@@ -146,6 +146,10 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     print(f"grasp_translation (m):\n{grasp_translation}")
     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
     print(f"width (m): {width:.5f}")
+#     grasp_translation=np.array([ 0.01994, -0.06649, 0.349 ])
+#     grasp_rotation=np.array([[-0.0159 , 0.99617, 0.08597],
+#  [-0.18112 , -0.08743 , 0.97957],
+#  [ 0.98333 , 0.       , 0.18181]])
     # 抓取位姿计算（夹爪补偿：沿抓取前向 -X 方向回退 10cm）
     # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
     base_pose, _ = convert_new(
@@ -154,7 +158,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.0,
+        gripper_length=0.15,
     )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
@@ -178,17 +182,16 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
     print(f"pre-rotation_matrix-01:\n{rotation_mat_01}")
 
-    #预抓取计算02：
-    # pre_grasp_offset_02 = 0.1
-    # pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
+    # #预抓取计算02：
+    pre_grasp_offset_02 = 0.05
+    pre_grasp_pose_02 = np.array(base_pose, dtype=float).copy()
     # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
-    # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
-    # x_axis = rotation_mat[:, 0]
-    # pre_grasp_pose_02[:3] -= x_axis * pre_grasp_offset_02
-    # pre_grasp_pose_02[2] += pre_grasp_offset_02
-    # rotation_mat_02 = R.from_euler('XYZ', pre_grasp_pose_02[3:], degrees=False).as_matrix()
-    # print(f"pre-grasp_pose_02:\n{pre_grasp_pose_02}")
-    # print(f"pre-rotation_matrix-02:\n{rotation_mat_02}")
+    rotation_mat = R.from_euler('xyz', pre_grasp_pose_02[3:], degrees=False).as_matrix()
+    x_axis = rotation_mat[:, 0]
+    pre_grasp_pose_02[:3] -= x_axis * pre_grasp_offset_02
+    rotation_mat_02 = R.from_euler('xyz', pre_grasp_pose_02[3:], degrees=False).as_matrix()
+    print(f"pre-grasp_pose_02:\n{pre_grasp_pose_02}")
+    print(f"pre-rotation_matrix-02:\n{rotation_mat_02}")
 
     controller, now, eef_state = arm_time_and_state()
     # grip_max = controller.get_robot_config().gripper_width
@@ -197,7 +200,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
         build_eef_cmd(pre_grasp_pose_01, grip_now, now + 5.0),
-        # build_eef_cmd(pre_grasp_pose_02, grip_max, now + 11.0),
+        build_eef_cmd(pre_grasp_pose_02, grip_now, now + 11.0),
     ])
 
 
