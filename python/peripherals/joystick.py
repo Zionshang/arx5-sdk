@@ -22,7 +22,7 @@ class JoystickRobotics:
     def __init__(
         self,
         trans_step: List[float] = [0.001, 0.001, 0.001],
-        orient_step: List[float] = [0.005, 0.005, 0.005],  # roll, pitch, yaw（rad/step）
+        orient_step: List[float] = [0.01, 0.005, 0.005],  # roll, pitch, yaw（rad/step）
         gripper_step: float = 0.001,
         trans_reverse: List[int] = [1, 1, 1],
         euler_reverse: List[int] = [1, 1, 1],
@@ -126,9 +126,9 @@ class JoystickRobotics:
                     self.position[2] += self.trans_step[2] * (hat_v) * self.trans_reverse[2]
 
                     # 姿态（右摇杆：水平=roll，垂直=pitch；X/B 调 yaw）
-                    self.euler[0] += self.orient_step[0] * (r_stick_h) * self.euler_reverse[0]  # roll
+                    self.euler[0] += self.orient_step[0] * (hat_h) * self.euler_reverse[0]  # roll
                     self.euler[1] += self.orient_step[1] * (-r_stick_v) * self.euler_reverse[1]  # pitch
-                    self.euler[2] += self.orient_step[2] * (-hat_h) * self.euler_reverse[2]  # yaw
+                    self.euler[2] += self.orient_step[2] * (-r_stick_h) * self.euler_reverse[2]  # yaw
 
                     # 夹爪（LB 关，RB 开）
                     if buttons[XboxButton.LB]:
