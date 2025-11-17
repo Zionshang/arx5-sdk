@@ -158,7 +158,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.15,
+        gripper_length=0.07,
     )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
@@ -168,7 +168,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     base_rxyz = base_pose_np[3:]
 
     # 预抓取计算01：
-    pre_grasp_offset_01 = 0.15
+    pre_grasp_offset_01 = 0.10
     pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
     # # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
     # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
@@ -234,7 +234,7 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=46)
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=47)
     if yolo_model is None:
         print('[Info] YOLO not available; skipping segmentation.')
 
@@ -249,13 +249,8 @@ def short_loop(args):
     controller = init_arm_controller()
     controller.reset_to_home()
     # 预抓取位姿
-    # prep_pose = np.array([0.3808947838198619,
-    #                      0.0010951536627964757,
-    #                      0.23226317113384085,
-    #                      0.003068532940281973,
-    #                      1.2510476636525898,
-    #                      0.002855123071475998], dtype=float)
-    prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
+    # prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
+    prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
@@ -343,7 +338,8 @@ def short_loop(args):
 # --------------------------- 入口 ---------------------------
 def main():
     # 直接复用 grasp_process 的参数解析；若未提供则注入默认 checkpoint 路径
-    default_ckpt = os.path.join(CUR_DIR, 'checkpoint', 'checkpoint-rs.tar')
+    ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_ckpt = os.path.join(ROOT_DIR, 'python', 'graspnet', 'checkpoint', 'checkpoint-rs.tar')
     if '--checkpoint_path' not in sys.argv:
         sys.argv += ['--checkpoint_path', default_ckpt]
     args = gp.parse_args()
