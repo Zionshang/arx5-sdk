@@ -4,3 +4,4 @@ __pycache__
 python/data
 build*
 python/joycon/joycon_robotics.egg-info
+.vscode
