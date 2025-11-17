@@ -251,8 +251,11 @@ def short_loop(args):
     controller = init_arm_controller()
     controller.reset_to_home()
     # 预抓取位姿
-    prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
+    # prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
+    #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
+    #斜向下
+    prep_pose = np.array([ 0.1282 , 0.001 , 0.2565 , -0. , 0.84 , 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
