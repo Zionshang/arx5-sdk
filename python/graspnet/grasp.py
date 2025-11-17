@@ -126,19 +126,6 @@ def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
                          factor_depth)
 
 
-# def init_vis(window_name: str = 'GraspNet Live', w: int = 1280, h: int = 720):
-#     """初始化 Open3D 可视化器与点云，返回 (vis, pcd, T)。"""
-#     vis = o3d.visualization.Visualizer()
-#     vis.create_window(window_name=window_name, width=w, height=h)
-#     pcd = o3d.geometry.PointCloud()
-#     vis.add_geometry(pcd)
-#     # 调整显示方向
-#     T = np.eye(4, dtype=np.float64)
-#     T[:3, :3] = np.array([[1.0, 0.0, 0.0],
-#                           [0.0, -1.0, 0.0],
-#                           [0.0, 0.0, -1.0]], dtype=np.float64)
-#     return vis, pcd, T
-
 def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
     #打印位姿信息
@@ -146,11 +133,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     print(f"grasp_translation (m):\n{grasp_translation}")
     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
     print(f"width (m): {width:.5f}")
-#     grasp_translation=np.array([ 0.01994, -0.06649, 0.349 ])
-#     grasp_rotation=np.array([[-0.0159 , 0.99617, 0.08597],
-#  [-0.18112 , -0.08743 , 0.97957],
-#  [ 0.98333 , 0.       , 0.18181]])
-    # 抓取位姿计算（夹爪补偿：沿抓取前向 -X 方向回退 10cm）
+
     # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
     base_pose, _ = convert_new(
         grasp_translation,
@@ -170,11 +153,6 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     # 预抓取计算01：
     pre_grasp_offset_01 = 0.10
     pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
-    # # 按 SDK 约定使用 XYZ 顺序（roll, pitch, yaw，弧度）构造旋转矩阵
-    # rotation_mat = R.from_euler('XYZ', pre_grasp_pose_01[3:], degrees=False).as_matrix()
-    # x_axis = rotation_mat[:, 0]
-    # pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
-    # pre_grasp_pose_01[2] += pre_grasp_offset_01
     rotation_mat = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
     x_axis = rotation_mat[:, 0]
     pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
@@ -297,13 +275,6 @@ def short_loop(args):
 
                 if workspace_mask is None:
                     print('[Info] YOLO 未检测到目标，跳过抓取生成。')
-                    # if gripper_geoms:
-                    #     for g in gripper_geoms:
-                    #         try:
-                    #             vis.remove_geometry(g)
-                    #         except Exception:
-                    #             pass
-                    # gripper_geoms = []
                     last_grasp_info = None
                 else:
                     # 基座系方向筛选所需：当前末端位姿与手眼标定
@@ -323,10 +294,7 @@ def short_loop(args):
                     grasp_control(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
                     time.sleep(15)
                     print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
-                    # time.sleep(20)
-                    # controller.reset_to_home()
-                    # time.sleep(10)
-                    # break
+
                 else:
                     print("No grasp available yet.")
 
