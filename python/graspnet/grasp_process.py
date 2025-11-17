@@ -209,48 +209,65 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     gg.nms()
     gg.sort_by_score()
 
-    # 方向筛选（在基座标系下）：g, frame
-    # 要求：
-    #  - 抓取前进方向（x轴）与基座 -Z 夹角 < 30°
-    #  - 抓取 y 轴与基座 +Y 夹角 < 110°
+    # # 方向筛选（在基座标系下）：g, frame
+    # # 要求：
+    # #  - 抓取前进方向（x轴）与基座 -Z 夹角 < 30°
+    # #  - 抓取 y 轴与基座 +Y 夹角 < 110°
 
-    base_down = np.array([0.0, 0.0, -1.0], dtype=np.float32)
-    base_y = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-    thr_down = np.deg2rad(30.0)
-    thr_left = np.deg2rad(110.0)
+    # base_down = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+    # base_y = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    # thr_down = np.deg2rad(30.0)
+    # thr_left = np.deg2rad(110.0)
 
-    keep_inds = []
-    for i, grasp in enumerate(gg):
-        # 将抓取姿态转换到基座系，只取旋转矩阵
-        t_grasp = grasp.translation
-        R_grasp = grasp.rotation_matrix
-        _, R_base = convert_new(t_grasp, R_grasp, current_ee_pose, handeye_rot, handeye_trans, gripper_length=0.0)
+    # keep_inds = []
+    # for i, grasp in enumerate(gg):
+    #     # 将抓取姿态转换到基座系，只取旋转矩阵
+    #     t_grasp = grasp.translation
+    #     R_grasp = grasp.rotation_matrix
+    #     _, R_base = convert_new(t_grasp, R_grasp, current_ee_pose, handeye_rot, handeye_trans, gripper_length=0.0)
 
-        x_dir = R_base[:, 0]
-        y_dir = R_base[:, 1]
+    #     x_dir = R_base[:, 0]
+    #     y_dir = R_base[:, 1]
 
-        cos1 = float(np.dot(x_dir, base_down))
-        cos1 = np.clip(cos1, -1.0, 1.0)
-        ang1 = np.arccos(cos1)
+    #     cos1 = float(np.dot(x_dir, base_down))
+    #     cos1 = np.clip(cos1, -1.0, 1.0)
+    #     ang1 = np.arccos(cos1)
 
-        cos2 = float(np.dot(y_dir, base_y))
-        cos2 = np.clip(cos2, -1.0, 1.0)
-        ang2 = np.arccos(cos2)
+    #     cos2 = float(np.dot(y_dir, base_y))
+    #     cos2 = np.clip(cos2, -1.0, 1.0)
+    #     ang2 = np.arccos(cos2)
 
-        if (ang1 < thr_down) and (ang2 < thr_left):
-        # if ang2 < thr_left:
-            keep_inds.append(i)
+    #     if (ang1 < thr_down) and (ang2 < thr_left):
+    #     # if ang2 < thr_left:
+    #         keep_inds.append(i)
 
-    if len(keep_inds) == 0:
-        print("\n[Warning] No grasp predictions meeting base-frame orientation constraints. Using all predictions.")
+    # if len(keep_inds) == 0:
+    #     print("\n[Warning] No grasp predictions meeting base-frame orientation constraints. Using all predictions.")
+    #     gg_filtered = gg
+    # else:
+    #     gg_filtered = gg[keep_inds]
+    all_grasps = list(gg)
+    vertical = np.array([0.0, 0.0, 1.0], dtype=float)
+    angle_threshold = np.deg2rad(30.0)
+    filtered = []
+    for grasp in all_grasps:
+        approach_dir = grasp.rotation_matrix[:, 0]
+        cos_angle = float(np.dot(approach_dir, vertical))
+        cos_angle = float(np.clip(cos_angle, -1.0, 1.0))
+        angle = float(np.arccos(cos_angle))
+        if angle < angle_threshold:
+            filtered.append(grasp)
+
+    if len(filtered) == 0:
+        print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
         gg_filtered = gg
     else:
-        gg_filtered = gg[keep_inds]
+        print(f"\n[DEBUG] Filtered {len(filtered)} grasps within ±30° of vertical out of {len(all_grasps)} total predictions.")
 
     # 已按分数降序，取满足方向约束中的最高分一个
     k = min(20, len(gg))
     # gg_filtered = gg[:1]
-    gg_filtered = gg_filtered[:1]
+    gg_filtered = filtered[:1]
 
     # 提取返回的抓取数值信息
     grasp_info = None
@@ -262,7 +279,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
             'width': float(g0.width),
         }
 
-    # # Open3D gripper geometries and show（同时可视化抓取坐标系）
+    # Open3D gripper geometries and show（同时可视化抓取坐标系）
     grippers = gg_filtered.to_open3d_geometry_list()
     geoms_to_show = [pcd]
     for g, grasp in zip(grippers, gg_filtered):
