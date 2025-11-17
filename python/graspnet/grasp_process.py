@@ -262,8 +262,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
             'width': float(g0.width),
         }
 
-    # Open3D gripper geometries and show（同时可视化抓取坐标系）
-    # 可视化前20个抓取：将所有几何体收集到列表，一次性调用 draw_geometries
+    # # Open3D gripper geometries and show（同时可视化抓取坐标系）
     grippers = gg_filtered.to_open3d_geometry_list()
     geoms_to_show = [pcd]
     for g, grasp in zip(grippers, gg_filtered):
@@ -280,16 +279,6 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
         geoms_to_show.append(frame)
     # 注意：draw_geometries 为阻塞式调用，关闭窗口后函数才会继续
     o3d.visualization.draw_geometries(geoms_to_show, window_name='Top-20 Grasps', width=800, height=600)
-    # for grasp in gg_filtered:
-    #     frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.05)
-    #     pose = np.eye(4, dtype=np.float64)
-    #     pose[:3, :3] = grasp.rotation_matrix
-    #     pose[:3, 3] = grasp.translation
-    #     safe_transform(frame, pose)
-    #     grippers.append(frame)
-    # gripper_geoms = replace_grippers(vis, gripper_geoms, grippers, T)
-    # vis.poll_events()
-    # vis.update_renderer()
     return grasp_info
 
 
