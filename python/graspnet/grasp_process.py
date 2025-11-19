@@ -252,7 +252,6 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     angle_threshold_x = np.deg2rad(30.0)
     angle_threshold_y = np.deg2rad(110.0)
     keep_inds = []
-    selected_angle_x = None
     for i, grasp in enumerate(all_grasps):
         approach_dir = grasp.rotation_matrix[:, 0]
         cos_angle_x = float(np.dot(approach_dir, vertical))
@@ -266,7 +265,6 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
         
         if angle_x < angle_threshold_x and angle_y < angle_threshold_y:
             keep_inds.append(i)
-            selected_angle_x = angle_x
 
     if len(keep_inds) == 0:
         print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
@@ -283,7 +281,10 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     grasp_info = None
     if len(gg_filtered) > 0:
         g0 = gg_filtered[0]
-        angle_x = selected_angle_x
+        approach_dir_best = g0.rotation_matrix[:, 0]
+        cos_angle_x_best = float(np.dot(approach_dir_best, vertical))
+        cos_angle_x_best = float(np.clip(cos_angle_x_best, -1.0, 1.0))
+        angle_x = float(np.arccos(cos_angle_x_best))
         grasp_info = {
             'translation': g0.translation.copy(),
             'rotation_matrix': g0.rotation_matrix.copy(),
