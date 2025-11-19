@@ -141,7 +141,7 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.07,
+        gripper_length=0.01,
     )
 
     # 正式执行部分
@@ -150,21 +150,18 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
     base_rxyz = base_pose_np[3:]
 
     # 预抓取计算01：
-    pre_grasp_offset_01 = 0.15
-    pre_grasp_pose_01 = np.array(base_pose, dtype=float).copy()
-    rotation_mat = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
-    x_axis = rotation_mat[:, 0]
-    pre_grasp_pose_01[:3] -= x_axis * pre_grasp_offset_01
-    rotation_mat_01 = R.from_euler('xyz', pre_grasp_pose_01[3:], degrees=False).as_matrix()
+    pre_grasp_pose_01 = base_pose_np.copy()
+    pre_grasp_pose_01[0] -= 0.12  # x 值减去 0.12m
+    pre_grasp_pose_01[2] += 0.10  # z 值增加 0.10m
+    pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
-    print(f"pre-rotation_matrix-01:\n{rotation_mat_01}")
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(pre_grasp_pose_01, grip_now, now + 3.0),
+        build_eef_cmd(pre_grasp_pose_01, grip_now, now + 2.0),
     ])
 def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
@@ -181,7 +178,7 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.07,
+        gripper_length=0.01,
     )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
@@ -193,19 +190,20 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    grip_target = float(np.clip(width, 0.0, controller.get_robot_config().gripper_width))
-
+    grip_target = float(controller.get_robot_config().gripper_width - 0.02)
     lift_pose = base_pose_np.copy()
-    lift_pose[2] += 0.2  # raise 20 cm after the grasp closes
+    lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
+
+    # 最终位置：回到关节复位状态的EEF位姿（假设关节0时的EEF位姿为[0,0,0,0,0,0]，夹爪保持grip_target）
+    final_pose = np.array([ 0.2402, 0.001, 0.1565, -0., 0.,  0. ], dtype=float)
 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
         build_eef_cmd(base_pose_np, grip_now, now + 3.0),
         build_eef_cmd(base_pose_np, grip_target, now + 5.0),
         build_eef_cmd(lift_pose, grip_target, now + 8.0),
+        build_eef_cmd(final_pose, grip_target, now + 12.0),
     ])
-
-
 
 
 # --------------------------- 主循环（精炼） ---------------------------
@@ -255,15 +253,15 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.1282 , 0.001 , 0.2565 , -0. , 0.84 , 0. ], dtype=float)
+    prep_pose = np.array([ 0.2562, 0.001 , 0.22 ,-0. , 0.95 , 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
 
     controller.set_eef_traj([
         build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-        build_eef_cmd(prep_pose, grip_home, start_ts + 6.0),
-        build_eef_cmd(prep_pose, grip_max, start_ts + 10.0),
+        build_eef_cmd(prep_pose, grip_home, start_ts + 3.0),
+        build_eef_cmd(prep_pose, grip_max, start_ts + 5.0),
     ])
 
     # RealSense + 相机内参
@@ -331,7 +329,7 @@ def short_loop(args):
                     grasp_width = last_grasp_info['width']
                     current_pose = eef_state.pose_6d().copy()
                     grasp_control_step1(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
-                    time.sleep(15)
+                    time.sleep(20)
                     print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
 
                 else:

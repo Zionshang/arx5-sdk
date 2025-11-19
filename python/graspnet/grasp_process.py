@@ -248,35 +248,47 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     #     gg_filtered = gg[keep_inds]
     all_grasps = list(gg)
     vertical = np.array([0.0, 0.0, 1.0], dtype=float)
-    angle_threshold = np.deg2rad(30.0)
-    filtered = []
-    for grasp in all_grasps:
+    camera_x = np.array([1.0, 0.0, 0.0], dtype=float)
+    angle_threshold_x = np.deg2rad(30.0)
+    angle_threshold_y = np.deg2rad(110.0)
+    keep_inds = []
+    selected_angle_x = None
+    for i, grasp in enumerate(all_grasps):
         approach_dir = grasp.rotation_matrix[:, 0]
-        cos_angle = float(np.dot(approach_dir, vertical))
-        cos_angle = float(np.clip(cos_angle, -1.0, 1.0))
-        angle = float(np.arccos(cos_angle))
-        if angle < angle_threshold:
-            filtered.append(grasp)
+        cos_angle_x = float(np.dot(approach_dir, vertical))
+        cos_angle_x = float(np.clip(cos_angle_x, -1.0, 1.0))
+        angle_x = float(np.arccos(cos_angle_x))
+        
+        y_dir = grasp.rotation_matrix[:, 1]
+        cos_angle_y = float(np.dot(y_dir, camera_x))
+        cos_angle_y = float(np.clip(cos_angle_y, -1.0, 1.0))
+        angle_y = float(np.arccos(cos_angle_y))
+        
+        if angle_x < angle_threshold_x and angle_y < angle_threshold_y:
+            keep_inds.append(i)
+            selected_angle_x = angle_x
 
-    if len(filtered) == 0:
+    if len(keep_inds) == 0:
         print("\n[Warning] No grasp predictions within vertical angle threshold. Using all predictions.")
         gg_filtered = gg
     else:
-        print(f"\n[DEBUG] Filtered {len(filtered)} grasps within ±30° of vertical out of {len(all_grasps)} total predictions.")
+        print(f"\n[DEBUG] Filtered {len(keep_inds)} grasps within ±30° of vertical out of {len(all_grasps)} total predictions.")
 
     # 已按分数降序，取满足方向约束中的最高分一个
     k = min(20, len(gg))
     # gg_filtered = gg[:1]
-    gg_filtered = filtered[:1]
+    gg_filtered = gg[keep_inds[0]:keep_inds[0]+1] if keep_inds else gg[:1]
 
     # 提取返回的抓取数值信息
     grasp_info = None
     if len(gg_filtered) > 0:
         g0 = gg_filtered[0]
+        angle_x = selected_angle_x
         grasp_info = {
             'translation': g0.translation.copy(),
             'rotation_matrix': g0.rotation_matrix.copy(),
             'width': float(g0.width),
+            'angle_x': angle_x,
         }
 
     # Open3D gripper geometries and show（同时可视化抓取坐标系）
