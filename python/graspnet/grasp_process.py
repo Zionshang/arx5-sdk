@@ -170,13 +170,22 @@ def yolo_get_mask(yolo_model, color, yolo_predict_params):
         results = yolo_model.predict(color, **yolo_predict_params)
         r = results[0]
         seg_vis = r.plot() if hasattr(r, 'plot') else None
+        mask_acc = np.zeros(color.shape[:2], dtype=np.uint8)
         if r.masks is not None and len(r.masks.data) > 0:
-            mask_acc = np.zeros(color.shape[:2], dtype=np.uint8)
             for t in r.masks.data:
                 m = t.detach().cpu().numpy().astype(np.uint8)
                 mask_acc |= m
-            if mask_acc.sum() > 0:
-                return (mask_acc * 255).astype(np.uint8), seg_vis
+        elif getattr(r, 'boxes', None) is not None and len(r.boxes) > 0:
+            for box in r.boxes.xyxy.detach().cpu().numpy():
+                x1, y1, x2, y2 = box.astype(int)
+                x1 = np.clip(x1, 0, color.shape[1])
+                x2 = np.clip(x2, 0, color.shape[1])
+                y1 = np.clip(y1, 0, color.shape[0])
+                y2 = np.clip(y2, 0, color.shape[0])
+                if x2 > x1 and y2 > y1:
+                    mask_acc[y1:y2, x1:x2] = 1
+        if mask_acc.sum() > 0:
+            return (mask_acc * 255).astype(np.uint8), seg_vis
         # 未检测到目标
         return None, None
     except Exception as e:

@@ -88,7 +88,7 @@ def init_yolo(root_dir: str, target_class_id: int = 46):
     params = None
     try:
         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
-            weights = os.path.join(root_dir, 'yolo11', 'yolo11n-seg.pt')
+            weights = os.path.join(root_dir, 'yolo11', 'yolo11n.pt')
             yolo_model = gp.YOLO(weights)
             params = {"conf": 0.4, "iou": 0.7, "classes": [target_class_id]}
     except Exception as e:
