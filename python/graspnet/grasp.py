@@ -325,7 +325,7 @@ def short_loop(args):
         build_eef_cmd(prep_pose, grip_home, start_ts + 3.0),
         build_eef_cmd(prep_pose, grip_max, start_ts + 5.0),
     ])
-
+    time.sleep(6)
     # RealSense + 相机内参
     color_w, color_h = 640, 480
     camera_info = make_camera_info(color_w, color_h)
