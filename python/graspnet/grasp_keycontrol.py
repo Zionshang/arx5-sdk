@@ -234,7 +234,7 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=47)
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=47) #47苹果  64鼠标
     if yolo_model is None:
         print('[Info] YOLO not available; skipping segmentation.')
 
@@ -253,7 +253,7 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.2562, 0.001 , 0.22 ,-0. , 0.95 , 0. ], dtype=float)
+    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0.  , 0.6  , 0. ], dtype=float) 
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
