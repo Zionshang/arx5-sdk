@@ -10,8 +10,9 @@ import os
 import cv2
 import numpy as np
 import pyrealsense2 as rs
+import re
 
-OUTPUT_DIR = "/home/jyx/python_ws/yolo_data/jpg_images"
+OUTPUT_DIR = "/home/zishang/python-ws/yolo_data/jpg_images"
 COLOR_WIDTH = 640
 COLOR_HEIGHT = 480
 FPS = 30
@@ -29,10 +30,29 @@ def main() -> None:
     config = rs.config()
     config.enable_stream(rs.stream.color, COLOR_WIDTH, COLOR_HEIGHT, rs.format.bgr8, FPS)
 
+    def _next_index_from_dir(path: str) -> int:
+        """Scan output directory for existing Img<N>.jpg files and return next index."""
+        try:
+            files = os.listdir(path)
+        except Exception:
+            return 0
+        pattern = re.compile(r'^Img(\d+)\.jpg$', flags=re.IGNORECASE)
+        nums = []
+        for fn in files:
+            m = pattern.match(fn)
+            if m:
+                try:
+                    nums.append(int(m.group(1)))
+                except Exception:
+                    continue
+        if not nums:
+            return 0
+        return max(nums) + 1
+
     try:
         pipeline.start(config)
-        index = 0
-        print('[Info] RealSense pipeline started. Press "s" to save, "q" to quit.')
+        index = _next_index_from_dir(OUTPUT_DIR)
+        print(f'[Info] RealSense pipeline started. Press "s" to save, "q" to quit. Next index: {index}')
 
         while True:
             frames = pipeline.wait_for_frames()

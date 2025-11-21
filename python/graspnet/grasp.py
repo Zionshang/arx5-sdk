@@ -140,8 +140,8 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
 
     # 预抓取计算01：
     pre_grasp_pose_01 = base_pose_np.copy()
-    pre_grasp_pose_01[0] -= 0.12  # x 值减去 0.12m
-    pre_grasp_pose_01[2] += 0.10  # z 值增加 0.10m
+    pre_grasp_pose_01[0] -= 0.16  # x 值减去 0.16m
+    pre_grasp_pose_01[2] += 0.14  # z 值增加 0.14m
     pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
 
@@ -179,7 +179,9 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    grip_target = float(controller.get_robot_config().gripper_width - 0.02)
+    # grip_target = float(controller.get_robot_config().gripper_width - 0.03)
+    # Ensure grip_target meets width-0.03 but is not negative
+    grip_target = max(0.0, float(width - 0.03))
     lift_pose = base_pose_np.copy()
     lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
 
@@ -189,9 +191,9 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
         build_eef_cmd(base_pose_np, grip_now, now + 2.0),
-        build_eef_cmd(base_pose_np, grip_target, now + 3.0),
-        build_eef_cmd(lift_pose, grip_target, now + 4.0),
-        build_eef_cmd(final_pose, grip_target, now + 7.0),
+        build_eef_cmd(base_pose_np, grip_target, now + 4.0),
+        build_eef_cmd(lift_pose, grip_target, now + 6.0),
+        build_eef_cmd(final_pose, grip_target, now + 10.0),
     ])
 
 
@@ -270,7 +272,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         handeye_rotation,
         handeye_translation
     )
-    time.sleep(7)
+    time.sleep(11)
     return best_grasp
 
 
@@ -302,7 +304,7 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=47)
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=46)
 
     # 可视化
     pcd = o3d.geometry.PointCloud()
@@ -315,7 +317,7 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.2562, 0.001 , 0.22 ,-0. , 0.95 , 0. ], dtype=float)
+    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0., 0.66  , 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width

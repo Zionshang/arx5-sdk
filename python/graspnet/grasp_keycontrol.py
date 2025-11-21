@@ -151,10 +151,9 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
 
     # 预抓取计算01：
     pre_grasp_pose_01 = base_pose_np.copy()
-    pre_grasp_pose_01[0] -= 0.12  # x 值减去 0.12m
-    pre_grasp_pose_01[2] += 0.10  # z 值增加 0.10m
+    pre_grasp_pose_01[0] -= 0.16  # x 值减去 0.16m
+    pre_grasp_pose_01[2] += 0.14  # z 值增加 0.14m
     pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
-    print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
@@ -190,19 +189,19 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    grip_target = float(controller.get_robot_config().gripper_width - 0.02)
+    grip_target = max(0.0, float(width - 0.03))
     lift_pose = base_pose_np.copy()
     lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
 
-    # 最终位置：回到关节复位状态的EEF位姿（假设关节0时的EEF位姿为[0,0,0,0,0,0]，夹爪保持grip_target）
+    # 最终位置：回到关节复位状态的EEF位姿，夹爪保持grip_target）
     final_pose = np.array([ 0.2402, 0.001, 0.1565, -0., 0.,  0. ], dtype=float)
 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(base_pose_np, grip_now, now + 3.0),
-        build_eef_cmd(base_pose_np, grip_target, now + 5.0),
-        build_eef_cmd(lift_pose, grip_target, now + 8.0),
-        build_eef_cmd(final_pose, grip_target, now + 12.0),
+        build_eef_cmd(base_pose_np, grip_now, now + 2.0),
+        build_eef_cmd(base_pose_np, grip_target, now + 4.0),
+        build_eef_cmd(lift_pose, grip_target, now + 6.0),
+        build_eef_cmd(final_pose, grip_target, now + 10.0),
     ])
 
 
@@ -253,7 +252,7 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0.  , 0.6  , 0. ], dtype=float) 
+    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0.  , 0.66  , 0. ], dtype=float) 
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
