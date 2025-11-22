@@ -130,7 +130,7 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.01,
+        gripper_length=0.03,
     )
 
     # 正式执行部分
@@ -167,7 +167,7 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.01,
+        gripper_length=0.03,
     )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
@@ -179,9 +179,10 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    # grip_target = float(controller.get_robot_config().gripper_width - 0.03)
-    # Ensure grip_target meets width-0.03 but is not negative
-    grip_target = max(0.0, float(width - 0.03))
+    grip_target = max(0.0, float(width - 0.05))
+
+    pre_base_pose_np = base_pose_np.copy()
+    pre_base_pose_np[2] += 0.02  # 提前 2 cm 避免碰撞
     lift_pose = base_pose_np.copy()
     lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
 
@@ -190,8 +191,9 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller.set_eef_traj([
         build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(base_pose_np, grip_now, now + 2.0),
-        build_eef_cmd(base_pose_np, grip_target, now + 4.0),
+        build_eef_cmd(pre_base_pose_np, grip_now, now + 3.0),
+        build_eef_cmd(base_pose_np, grip_now, now + 4.0),
+        build_eef_cmd(base_pose_np, grip_target, now + 5.0),
         build_eef_cmd(lift_pose, grip_target, now + 6.0),
         build_eef_cmd(final_pose, grip_target, now + 10.0),
     ])

@@ -259,7 +259,7 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     vertical = np.array([0.0, 0.0, 1.0], dtype=float)
     camera_x = np.array([1.0, 0.0, 0.0], dtype=float)
     angle_threshold_x = np.deg2rad(30.0)
-    angle_threshold_y = np.deg2rad(110.0)
+    angle_threshold_y = np.deg2rad(90.0)
     keep_inds = []
     for i, grasp in enumerate(all_grasps):
         approach_dir = grasp.rotation_matrix[:, 0]
