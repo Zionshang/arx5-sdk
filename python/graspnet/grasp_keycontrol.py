@@ -85,7 +85,7 @@ def init_yolo(root_dir: str):
     params = None
     try:
         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
-            weights = os.path.join(root_dir, 'yolo1', 'best.pt')
+            weights = os.path.join(root_dir, 'yolo11', 'best.pt')
             yolo_model = gp.YOLO(weights)
             # 初始不限制类别，由 get_best_mask 动态控制
             params = {"conf": 0.4, "iou": 0.7}
@@ -289,7 +289,7 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0.  , 0.66  , 0. ], dtype=float) 
+    prep_pose = np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
@@ -328,7 +328,7 @@ def short_loop(args):
                 controller.reset_to_home()
             elif key == ord('t'):
                 if yolo_model is not None:
-                    workspace_mask, seg_vis_candidate, locked_class_id = get_best_mask(yolo_model, color, yolo_params, locked_class_id)
+                    workspace_mask, seg_vis_candidate, locked_class_id = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id)
                     seg_vis = seg_vis_candidate
                 else:
                     workspace_mask = np.where(depth > 0, 255, 0).astype(np.uint8)

@@ -163,34 +163,38 @@ def prepare_end_points(color, depth, camera_info, num_point, device, workspace_m
     return end_points, cloud, cloud_masked, color_masked
 
 
-def yolo_get_mask(yolo_model, color, yolo_predict_params):
-    if yolo_model is None:
-        return None, None
-    try:
-        results = yolo_model.predict(color, **yolo_predict_params)
-        r = results[0]
-        seg_vis = r.plot() if hasattr(r, 'plot') else None
-        mask_acc = np.zeros(color.shape[:2], dtype=np.uint8)
-        if r.masks is not None and len(r.masks.data) > 0:
-            for t in r.masks.data:
-                m = t.detach().cpu().numpy().astype(np.uint8)
-                mask_acc |= m
-        elif getattr(r, 'boxes', None) is not None and len(r.boxes) > 0:
-            for box in r.boxes.xyxy.detach().cpu().numpy():
-                x1, y1, x2, y2 = box.astype(int)
-                x1 = np.clip(x1, 0, color.shape[1])
-                x2 = np.clip(x2, 0, color.shape[1])
-                y1 = np.clip(y1, 0, color.shape[0])
-                y2 = np.clip(y2, 0, color.shape[0])
-                if x2 > x1 and y2 > y1:
-                    mask_acc[y1:y2, x1:x2] = 1
-        if mask_acc.sum() > 0:
-            return (mask_acc * 255).astype(np.uint8), seg_vis
-        # 未检测到目标
-        return None, None
-    except Exception as e:
-        print('YOLO predict failed:', e)
-        return None, None
+def yolo_get_mask(yolo_model, color, params, locked_class_id):
+    """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
+    run_params = params.copy()
+    # 若已锁定，只检测该类别
+    if locked_class_id is not None:
+        run_params['classes'] = [locked_class_id]
+
+    results = yolo_model.predict(color, **run_params, verbose=False)
+    if not results or results[0].boxes is None or len(results[0].boxes) == 0:
+        return None, None, locked_class_id
+
+    r = results[0]
+    # 找置信度最高的索引
+    best_idx = int(r.boxes.conf.argmax().item())
+    best_class = int(r.boxes.cls[best_idx].item())
+
+    # 首次锁定
+    if locked_class_id is None:
+        locked_class_id = best_class
+        name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
+        print(f"[Info] 锁定目标类别: {name} (ID: {best_class})")
+
+    # 生成掩码 (仅使用Box)
+    mask = np.zeros(color.shape[:2], dtype=np.uint8)
+    box = r.boxes.xyxy[best_idx].detach().cpu().numpy().astype(int)
+    x1, y1, x2, y2 = box
+    # Clip to image bounds
+    x1, x2 = np.clip([x1, x2], 0, color.shape[1])
+    y1, y2 = np.clip([y1, y2], 0, color.shape[0])
+    mask[y1:y2, x1:x2] = 255
+
+    return mask, r.plot(), locked_class_id
 
 
 def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,

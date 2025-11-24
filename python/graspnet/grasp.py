@@ -68,7 +68,7 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
     return cmd
 
 # --------------------------- 小工具：初始化 ---------------------------
-def init_yolo(root_dir: str, target_class_id: int = 46):
+def init_yolo(root_dir: str):
     """初始化 YOLO 分割模型（若不可用则返回 None）。
 
     返回 (yolo_model, yolo_predict_params)
@@ -79,7 +79,7 @@ def init_yolo(root_dir: str, target_class_id: int = 46):
         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
             weights = os.path.join(root_dir, 'yolo11', 'best.pt')
             yolo_model = gp.YOLO(weights)
-            params = {"conf": 0.4, "iou": 0.7, "classes": [target_class_id]}
+            params = {"conf": 0.4, "iou": 0.7}
     except Exception as e:
         print(f"[Warn] YOLO init failed: {e}")
         yolo_model, params = None, None
@@ -130,7 +130,7 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.03,
+        gripper_length=0.04,
     )
 
     # 正式执行部分
@@ -167,7 +167,7 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.03,
+        gripper_length=0.04,
     )
     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
@@ -206,9 +206,11 @@ def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, y
     while True:
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
+            print("[Warn] Failed to capture frame.")
             continue
-        mask, _ = gp.yolo_get_mask(yolo_model, color, yolo_params)
+        mask, _,_ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
         if mask is None:
+            print("[Warn] No mask detected.")
             continue
 
         _, _, eef_state = arm_time_and_state()
@@ -218,7 +220,21 @@ def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, y
             net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
             current_pose, handeye_rot, handeye_trans
         )
-        if grasp is not None:
+        #判断抓取是否非none
+        if grasp is None:
+            print("[Warn] No grasp detected.")
+            continue
+        #判断抓取高度
+        test_pose, _ = convert_new(
+        grasp['translation'],
+        grasp['rotation_matrix'],
+        current_pose,
+        handeye_rotation,
+        handeye_translation,
+        gripper_length=0.04,
+        )
+        if 0 <= test_pose[0] <= 0.75 and -0.6 < test_pose[1] < 0.6 and 0.007 < test_pose[2] < 0.3:
+           print("first-Valid grasp found.")
            break
     if grasp is not None:
         grasp_control_step0(
@@ -238,7 +254,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
-        mask, _ = gp.yolo_get_mask(yolo_model, color, yolo_params)
+        mask, _ ,_= gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
         if mask is None:
             continue
 
@@ -249,12 +265,27 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
             net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
             current_pose, handeye_rot, handeye_trans
         )
+        #判断抓取是否非none
         if grasp is None:
+            print("[Warn] No grasp detected.")
             continue
-
+        #判断抓取高度
+        test_pose, _ = convert_new(
+        grasp['translation'],
+        grasp['rotation_matrix'],
+        current_pose,
+        handeye_rotation,
+        handeye_translation,
+        gripper_length=0.04,
+        )
+        if test_pose[2] <= 0.007:
+            print("[Warn] Grasp height too low, skipping.")
+            continue
+        #判断抓取角度
         angle_x = grasp.get('angle_x')
         if angle_x is None:
             continue
+        #筛选得到最终的grasp
         grasp_candidates.append((grasp, current_pose))
 
     best_grasp, _ = min(
@@ -306,7 +337,7 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=46)
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR)
 
     # 可视化
     pcd = o3d.geometry.PointCloud()
@@ -319,7 +350,7 @@ def short_loop(args):
     #竖直向下
     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
     #斜向下
-    prep_pose = np.array([ 0.2122 ,0.001 ,0.2 ,-0., 0.66  , 0. ], dtype=float)
+    prep_pose = np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float)
     _, start_ts, eef_state = arm_time_and_state()
     grip_home = eef_state.gripper_pos
     grip_max = controller.get_robot_config().gripper_width
