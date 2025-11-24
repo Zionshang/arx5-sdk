@@ -79,22 +79,54 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
     return cmd
 
 # --------------------------- 小工具：初始化 ---------------------------
-def init_yolo(root_dir: str, target_class_id: int = 46):
-    """初始化 YOLO 分割模型（若不可用则返回 None）。
-
-    返回 (yolo_model, yolo_predict_params)
-    """
+def init_yolo(root_dir: str):
+    """初始化 YOLO 模型（若不可用则返回 None）。"""
     yolo_model = None
     params = None
     try:
         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
-            weights = os.path.join(root_dir, 'yolo11', 'yolo11n.pt')
+            weights = os.path.join(root_dir, 'yolo1', 'best.pt')
             yolo_model = gp.YOLO(weights)
-            params = {"conf": 0.4, "iou": 0.7, "classes": [target_class_id]}
+            # 初始不限制类别，由 get_best_mask 动态控制
+            params = {"conf": 0.4, "iou": 0.7}
     except Exception as e:
         print(f"[Warn] YOLO init failed: {e}")
         yolo_model, params = None, None
     return yolo_model, params
+
+
+def get_best_mask(yolo_model, color, params, locked_class_id):
+    """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
+    run_params = params.copy()
+    # 若已锁定，只检测该类别
+    if locked_class_id is not None:
+        run_params['classes'] = [locked_class_id]
+    
+    results = yolo_model.predict(color, **run_params, verbose=False)
+    if not results or results[0].boxes is None or len(results[0].boxes) == 0:
+        return None, None, locked_class_id
+
+    r = results[0]
+    # 找置信度最高的索引
+    best_idx = int(r.boxes.conf.argmax().item())
+    best_class = int(r.boxes.cls[best_idx].item())
+
+    # 首次锁定
+    if locked_class_id is None:
+        locked_class_id = best_class
+        name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
+        print(f"[Info] 锁定目标类别: {name} (ID: {best_class})")
+
+    # 生成掩码 (仅使用Box)
+    mask = np.zeros(color.shape[:2], dtype=np.uint8)
+    box = r.boxes.xyxy[best_idx].detach().cpu().numpy().astype(int)
+    x1, y1, x2, y2 = box
+    # Clip to image bounds
+    x1, x2 = np.clip([x1, x2], 0, color.shape[1])
+    y1, y2 = np.clip([y1, y2], 0, color.shape[0])
+    mask[y1:y2, x1:x2] = 255
+
+    return mask, r.plot(), locked_class_id
 
 
 def init_realsense(color_w: int = 640, color_h: int = 480):
@@ -237,7 +269,7 @@ def short_loop(args):
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
     # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR, target_class_id=47) #47苹果  64鼠标
+    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR)
     if yolo_model is None:
         print('[Info] YOLO not available; skipping segmentation.')
 
@@ -247,6 +279,7 @@ def short_loop(args):
     # gripper_geoms = []
     last_grasp_info = None
     seg_vis = None
+    locked_class_id = None  # 锁定目标类别ID
 
     # arm_init
     controller = init_arm_controller()
@@ -295,7 +328,7 @@ def short_loop(args):
                 controller.reset_to_home()
             elif key == ord('t'):
                 if yolo_model is not None:
-                    workspace_mask, seg_vis_candidate = gp.yolo_get_mask(yolo_model, color, yolo_params)
+                    workspace_mask, seg_vis_candidate, locked_class_id = get_best_mask(yolo_model, color, yolo_params, locked_class_id)
                     seg_vis = seg_vis_candidate
                 else:
                     workspace_mask = np.where(depth > 0, 255, 0).astype(np.uint8)
