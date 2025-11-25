@@ -299,6 +299,9 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         angle_x = grasp.get('angle_x')
         if angle_x is None:
             continue
+        width = grasp.get('width')
+        if width is None or width > 0.09:
+            continue
         #筛选得到最终的grasp
         grasp_candidates.append((grasp, current_pose))
 
