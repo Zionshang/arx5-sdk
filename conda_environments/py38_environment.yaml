@@ -5,8 +5,10 @@ channels:
 dependencies:
   - python=3.8
   - ros-noetic-kdl-parser
+  - urdfdom=1.0.4
+  - urdfdom_headers=1.0.5
   - cxx-compiler
-  - cmake
+  - cmake>3.28
   - ninja
   - orocos-kdl
   - eigen
