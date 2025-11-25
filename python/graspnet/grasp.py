@@ -81,7 +81,7 @@ def init_yolo(root_dir: str):
     params = None
     try:
         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
-            weights = os.path.join(root_dir, 'yolo11', 'best.pt')
+            weights = os.path.join(root_dir, 'yolo11', 'best_atec.pt')
             yolo_model = gp.YOLO(weights)
             params = {"conf": 0.4, "iou": 0.7}
     except Exception as e:
