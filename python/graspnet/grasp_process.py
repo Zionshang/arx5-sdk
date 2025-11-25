@@ -198,7 +198,7 @@ def yolo_get_mask(yolo_model, color, params, locked_class_id):
 
 
 def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,
-                          current_ee_pose=None, handeye_rot=None, handeye_trans=None):
+                          current_ee_pose=None, handeye_rot=None, handeye_trans=None, save_path=None):
     # prepare inputs
     end_points, cloud, cloud_masked, color_masked = prepare_end_points(color, depth, camera_info, args.num_point, device, workspace_mask=workspace_mask)
 
@@ -322,6 +322,17 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
         geoms_to_show.append(frame)
     # 注意：draw_geometries 为阻塞式调用，关闭窗口后函数才会继续
     o3d.visualization.draw_geometries(geoms_to_show, window_name='Top-20 Grasps', width=800, height=600)
+    if save_path:
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(window_name='Grasp', width=800, height=600, visible=False)
+        for g in geoms_to_show:
+            vis.add_geometry(g)
+        vis.poll_events()
+        vis.update_renderer()
+        vis.capture_screen_image(save_path, do_render=True)
+        vis.destroy_window()
+        print(f"[Info] Saved grasp visualization to {save_path}")
+   
     return grasp_info
 
 

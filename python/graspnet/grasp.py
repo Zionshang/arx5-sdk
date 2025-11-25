@@ -68,6 +68,10 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
     return cmd
 
 # --------------------------- 小工具：初始化 ---------------------------
+SAVE_VISUALIZATION = True
+VIS_SAVE_DIR = os.path.join(ROOT_DIR, 'doc', 'grasp_result')
+os.makedirs(VIS_SAVE_DIR, exist_ok=True)
+
 def init_yolo(root_dir: str):
     """初始化 YOLO 分割模型（若不可用则返回 None）。
 
@@ -208,7 +212,7 @@ def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, y
         if color is None or depth is None:
             print("[Warn] Failed to capture frame.")
             continue
-        mask, _,_ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
+        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
         if mask is None:
             print("[Warn] No mask detected.")
             continue
@@ -216,9 +220,14 @@ def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, y
         _, _, eef_state = arm_time_and_state()
         current_pose = eef_state.pose_6d().copy()
 
+        timestamp = int(time.time())
+        if SAVE_VISUALIZATION and seg_vis is not None:
+            cv2.imwrite(os.path.join(VIS_SAVE_DIR, f'pregrasp_{timestamp}_yolo.jpg'), seg_vis)
+
         grasp = gp.run_graspnet_for_mask(
             net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
-            current_pose, handeye_rot, handeye_trans
+            current_pose, handeye_rot, handeye_trans,
+            save_path=os.path.join(VIS_SAVE_DIR, f'pregrasp_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
         )
         #判断抓取是否非none
         if grasp is None:
@@ -254,16 +263,21 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
-        mask, _ ,_= gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
+        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
         if mask is None:
             continue
 
         _, _, eef_state = arm_time_and_state()
         current_pose = eef_state.pose_6d().copy()
 
+        timestamp = int(time.time())
+        if SAVE_VISUALIZATION and seg_vis is not None:
+            cv2.imwrite(os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_yolo.jpg'), seg_vis)
+
         grasp = gp.run_graspnet_for_mask(
             net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
-            current_pose, handeye_rot, handeye_trans
+            current_pose, handeye_rot, handeye_trans,
+            save_path=os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
         )
         #判断抓取是否非none
         if grasp is None:
@@ -306,6 +320,16 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         handeye_translation
     )
     time.sleep(11)
+
+    if SAVE_VISUALIZATION:
+        print("[Info] Capturing post-grasp image...")
+        color, _ = capture_frame(pipeline, align)
+        if color is not None:
+            timestamp = int(time.time())
+            save_path = os.path.join(VIS_SAVE_DIR, f'post_grasp_{timestamp}.jpg')
+            cv2.imwrite(save_path, color)
+            print(f"[Info] Saved post-grasp image to {save_path}")
+
     return best_grasp
 
 
