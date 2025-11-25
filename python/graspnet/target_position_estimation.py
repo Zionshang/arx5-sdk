@@ -22,6 +22,9 @@ from grasp_keycontrol import init_arm_controller, init_realsense, init_yolo, han
 def get_target_position():
     # 1. Initialize Arm and Move to Observation Pose
     controller = init_arm_controller()
+    controller.reset_to_home()
+    # Warm up controller clock so set_eef_traj() has positive timestamps internally
+    time.sleep(1)
     # Target observation pose
     obs_pose = np.array([0.1602, 0.001, 0.2645, -0., 0.62, 0.], dtype=float)
     
@@ -68,6 +71,20 @@ def get_target_position():
     # 4. YOLO Detection
     print("Running YOLO detection...")
     results = yolo_model.predict(color_img, conf=0.4, iou=0.7, verbose=False)
+    # Save a quick visualization of YOLO results
+    vis_img = None
+    if results:
+        try:
+            vis_img = results[0].plot()
+        except Exception:
+            vis_img = None
+    if vis_img is not None:
+        ts_label = time.strftime("%Y%m%d_%H%M%S")
+        vis_dir = os.path.join(CUR_DIR, "doc", "obs_yolo")
+        os.makedirs(vis_dir, exist_ok=True)
+        vis_path = os.path.join(vis_dir, f"yolo_detect_{ts_label}.jpg")
+        cv2.imwrite(vis_path, vis_img)
+        print(f"YOLO detection visualization saved to {vis_path}")
     
     target_pos_base = np.array([10.0, 10.0, 10.0]) # Default large value
 
@@ -130,6 +147,17 @@ def get_target_position():
             print("Warning: Invalid depth at center pixel.")
     else:
         print("No target detected.")
+    # Use the latest real state as start to avoid a large jump that can trigger faults
+    end_state = controller.get_eef_state()
+    end_pose_start = end_state.pose_6d()
+    end_grip = end_state.gripper_pos
+    now_ = controller.get_timestamp() + cfg.default_preview_time
+    final_pose = np.array([0.2402, 0.001, 0.1565, -0., 0., 0.], dtype=float)
+    controller.set_eef_traj([
+        build_eef_cmd(end_pose_start, end_grip, now_),
+        build_eef_cmd(final_pose, end_grip, now_ + 3.0),
+    ])
+    time.sleep(3.5) # Wait for move to complete
 
     # Cleanup
     pipeline.stop()
