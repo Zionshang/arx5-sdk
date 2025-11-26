@@ -17,7 +17,7 @@ if CUR_DIR not in sys.path:
     sys.path.insert(0, CUR_DIR)
 
 import grasp_process as gp
-from grasp_keycontrol import init_arm_controller, init_realsense, init_yolo, handeye_rotation, handeye_translation, build_eef_cmd
+from grasp import init_arm_controller, init_realsense, init_yolo, handeye_rotation, handeye_translation, build_eef_cmd
 
 def get_target_position():
     # 1. Initialize Arm and Move to Observation Pose
@@ -98,15 +98,6 @@ def get_target_position():
         v = int((y1 + y2) / 2)
         
         # Get depth at center (handle 0 depth by searching neighborhood if needed, but keeping simple)
-        d = depth_img[v, u] * 0.001 # Scale to meters (assuming 1mm unit, check scale)
-        # Note: grasp_keycontrol uses factor_depth from CameraInfo, usually 1/scale. 
-        # D435i scale is usually 0.001. L515 might be different.
-        # grasp_keycontrol uses: factor_depth = 999.999... which implies depth_img / factor_depth ~ meters
-        # Let's use the value from grasp_keycontrol logic
-        depth_scale = 1.0 / 1000.0 # Standard Realsense
-        # Or better, check how grasp_process does it. 
-        # grasp_keycontrol: factor_depth = 999.999952502551
-        # So d_meters = d_raw / factor_depth
         d_meters = depth_img[v, u] / 999.999952502551
         
         if d_meters > 0:
