@@ -10,7 +10,6 @@ import cv2
 import open3d as o3d
 import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation as R
-# 确保可以导入项目根下的 arx5_interface（与 python/examples 中用法保持一致）
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
@@ -69,7 +68,7 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
 
 # --------------------------- 小工具：初始化 ---------------------------
 SAVE_VISUALIZATION = True
-VIS_SAVE_DIR = os.path.join(ROOT_DIR, 'doc', 'grasp_result')
+VIS_SAVE_DIR = os.path.join(ROOT_DIR,'graspnet', 'doc', 'grasp_result')
 os.makedirs(VIS_SAVE_DIR, exist_ok=True)
 
 def init_yolo(root_dir: str):
@@ -144,9 +143,9 @@ def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, 
 
     # 预抓取计算01：
     pre_grasp_pose_01 = base_pose_np.copy()
-    pre_grasp_pose_01[0] -= 0.16  # x 值减去 0.16m
-    pre_grasp_pose_01[2] += 0.14  # z 值增加 0.14m
-    pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
+    pre_grasp_pose_01[0] -= 0.17  # x 值减去 0.17m
+    pre_grasp_pose_01[2] += 0.13  # z 值增加 0.13m
+    pre_grasp_pose_01[3:] = [0., 0.78, 0.]  # rx, ry, rz
     print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
 
     controller, now, eef_state = arm_time_and_state()
@@ -242,7 +241,7 @@ def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, y
         handeye_translation,
         gripper_length=0.04,
         )
-        if 0 <= test_pose[0] <= 0.75 and -0.6 < test_pose[1] < 0.6 and 0.007 < test_pose[2] < 0.3:
+        if 0 <= test_pose[0] <= 0.7 and -0.5 < test_pose[1] < 0.5 and 0.007 < test_pose[2] < 0.3:
            print("first-Valid grasp found.")
            break
     if grasp is not None:
@@ -299,9 +298,9 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         angle_x = grasp.get('angle_x')
         if angle_x is None:
             continue
-        width = grasp.get('width')
-        if width is None or width > 0.09:
-            continue
+        # width = grasp.get('width')
+        # if width is None or width > 0.09:
+        #     continue
         #筛选得到最终的grasp
         grasp_candidates.append((grasp, current_pose))
 
