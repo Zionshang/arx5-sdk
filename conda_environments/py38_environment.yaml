@@ -5,8 +5,11 @@ channels:
 dependencies:
   - python=3.8
   - ros-noetic-kdl-parser
-  - cxx-compiler
-  - cmake
+  # - cxx-compiler  # for x86_64
+  # for aarch64 (arm64), use the system compiler
+  - urdfdom=1.0.4
+  - urdfdom_headers=1.0.5
+  - cmake>=3.28
   - ninja
   - orocos-kdl
   - eigen
@@ -18,7 +21,7 @@ dependencies:
   - pyzmq
   - pynput
   - pip
-  - conda-forge::soem=1.4.0 # This package is missing in aarch64
+  # - conda-forge::soem=1.4.0 # This package is missing in aarch64
   # To install it on aarch64 (arm64), comment out this package and first create the arx-py38 environment.
   # Directly clone the SOEM repository and install it to the conda environment (ensure $CONDA_PREFIX points to arx-py38):
   # `conda activate arx-py38`
