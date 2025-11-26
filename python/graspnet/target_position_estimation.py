@@ -56,41 +56,44 @@ def get_target_position():
     for _ in range(10):
         pipeline.wait_for_frames()
     
-    frames = pipeline.wait_for_frames()
-    aligned_frames = align.process(frames)
-    color_frame = aligned_frames.get_color_frame()
-    depth_frame = aligned_frames.get_depth_frame()
-    
-    if not color_frame or not depth_frame:
-        print("Error: Could not capture frames.")
-        return
-
-    color_img = np.asanyarray(color_frame.get_data())
-    depth_img = np.asanyarray(depth_frame.get_data())
-
-    # 4. YOLO Detection
-    print("Running YOLO detection...")
-    results = yolo_model.predict(color_img, conf=0.4, iou=0.7, verbose=False)
-    # Save a quick visualization of YOLO results
-    vis_img = None
-    if results:
-        try:
-            vis_img = results[0].plot()
-        except Exception:
-            vis_img = None
-    if vis_img is not None:
-        ts_label = time.strftime("%Y%m%d_%H%M%S")
-        vis_dir = os.path.join(CUR_DIR, "doc", "obs_yolo")
-        os.makedirs(vis_dir, exist_ok=True)
-        vis_path = os.path.join(vis_dir, f"yolo_detect_{ts_label}.jpg")
-        cv2.imwrite(vis_path, vis_img)
-        print(f"YOLO detection visualization saved to {vis_path}")
-    
     target_pos_base = np.array([10.0, 10.0, 10.0]) # Default large value
 
-    if results and results[0].boxes and len(results[0].boxes) > 0:
-        # Get best detection (highest confidence)
-        best_box = results[0].boxes[0]
+    best_box = None
+    color_img = depth_img = None
+    for attempt in range(10):
+        frames = pipeline.wait_for_frames()
+        aligned_frames = align.process(frames)
+        color_frame = aligned_frames.get_color_frame()
+        depth_frame = aligned_frames.get_depth_frame()
+        
+        if not color_frame or not depth_frame:
+            print("Error: Could not capture frames.")
+            return
+
+        color_img = np.asanyarray(color_frame.get_data())
+        depth_img = np.asanyarray(depth_frame.get_data())
+
+        print(f"Running YOLO detection (attempt {attempt + 1}/10)...")
+        results = yolo_model.predict(color_img, conf=0.4, iou=0.7, verbose=False)
+        vis_img = None
+        if results:
+            try:
+                vis_img = results[0].plot()
+            except Exception:
+                vis_img = None
+        if vis_img is not None:
+            ts_label = time.strftime("%Y%m%d_%H%M%S")
+            vis_dir = os.path.join(CUR_DIR, "doc", "obs_yolo")
+            os.makedirs(vis_dir, exist_ok=True)
+            vis_path = os.path.join(vis_dir, f"yolo_detect_{ts_label}.jpg")
+            cv2.imwrite(vis_path, vis_img)
+            print(f"YOLO detection visualization saved to {vis_path}")
+
+        if results and results[0].boxes and len(results[0].boxes) > 0:
+            best_box = results[0].boxes[0]
+            break
+
+    if best_box is not None:
         x1, y1, x2, y2 = best_box.xyxy[0].cpu().numpy()
         
         # Calculate center
@@ -137,7 +140,7 @@ def get_target_position():
         else:
             print("Warning: Invalid depth at center pixel.")
     else:
-        print("No target detected.")
+        print("No target detected after 10 attempts.")
     # Use the latest real state as start to avoid a large jump that can trigger faults
     end_state = controller.get_eef_state()
     end_pose_start = end_state.pose_6d()
