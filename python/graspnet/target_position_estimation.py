@@ -16,47 +16,17 @@ CUR_DIR = os.path.dirname(os.path.abspath(__file__))
 if CUR_DIR not in sys.path:
     sys.path.insert(0, CUR_DIR)
 
-import grasp_process as gp
-from grasp import init_arm_controller, init_realsense, init_yolo, handeye_rotation, handeye_translation, build_eef_cmd
-
-def get_target_position():
-    # 1. Initialize Arm and Move to Observation Pose
-    controller = init_arm_controller()
-    controller.reset_to_home()
-    # Warm up controller clock so set_eef_traj() has positive timestamps internally
-    time.sleep(1)
-    # Target observation pose
-    obs_pose = np.array([0.1602, 0.001, 0.2645, -0., 0.62, 0.], dtype=float)
-    
-    print(f"Moving to observation pose: {obs_pose}")
-    # Get current state to plan trajectory
-    cfg = controller.get_controller_config()
-    curr_state = controller.get_eef_state()
-    curr_pose = curr_state.pose_6d()
-    curr_grip = curr_state.gripper_pos
-    now = controller.get_timestamp() + cfg.default_preview_time
-    
-    # Move to pose (give it 3 seconds)
-    controller.set_eef_traj([
-        build_eef_cmd(curr_pose, curr_grip, now),
-        build_eef_cmd(obs_pose, curr_grip, now + 3.0)
-    ])
-    time.sleep(3.5) # Wait for move to complete
-
-    # 2. Initialize Sensors and Model
-    pipeline, align = init_realsense()
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR)
-    
-    if yolo_model is None:
-        print("Error: YOLO model not found.")
-        return
-
-    # 3. Capture Frame
-    # Warmup/Wait for frames
+#手眼标定外参
+handeye_rotation = [[-0.02489131, -0.16662419 , 0.98570624],
+ [-0.99968  ,   0.00859452, -0.02379136],
+ [-0.00450745, -0.98598302, -0.1667848 ]]
+handeye_translation = [-0.09760795,0.02448454,0.0883561]
+def get_target_position(pipeline=None, align=None, yolo_model=None,current_state=None):
+    # 相机预热
     for _ in range(10):
         pipeline.wait_for_frames()
     
-    target_pos_base = np.array([10.0, 10.0, 10.0]) # Default large value
+    target_pos_base = None 
 
     best_box = None
     color_img = depth_img = None
@@ -121,11 +91,9 @@ def get_target_position():
             T_cam2ee = np.eye(4)
             T_cam2ee[:3, :3] = np.array(handeye_rotation)
             T_cam2ee[:3, 3] = np.array(handeye_translation)
-            
             # End-Effector to Base
             # Get current actual pose
-            curr_state = controller.get_eef_state()
-            curr_pose = curr_state.pose_6d() # [x, y, z, rx, ry, rz]
+            curr_pose = current_state.pose_6d() # [x, y, z, rx, ry, rz]
             
             R_ee2base = R.from_euler('xyz', curr_pose[3:], degrees=False).as_matrix()
             T_ee2base = np.eye(4)
@@ -141,17 +109,6 @@ def get_target_position():
             print("Warning: Invalid depth at center pixel.")
     else:
         print("No target detected after 10 attempts.")
-    # Use the latest real state as start to avoid a large jump that can trigger faults
-    end_state = controller.get_eef_state()
-    end_pose_start = end_state.pose_6d()
-    end_grip = end_state.gripper_pos
-    now_ = controller.get_timestamp() + cfg.default_preview_time
-    final_pose = np.array([0.2402, 0.001, 0.1565, -0., 0., 0.], dtype=float)
-    controller.set_eef_traj([
-        build_eef_cmd(end_pose_start, end_grip, now_),
-        build_eef_cmd(final_pose, end_grip, now_ + 3.0),
-    ])
-    time.sleep(3.5) # Wait for move to complete
 
     # Cleanup
     pipeline.stop()

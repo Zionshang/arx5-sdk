@@ -19,6 +19,7 @@ if ROOT_DIR not in sys.path:
         pass
 from arx5_interface import Arx5CartesianController, EEFState
 from grasp2base.convert import convert_new
+from target_position_estimation import get_target_position
 # 同目录导入现有实现（其内部已设置 models/utils/graspnetAPI 路径）
 # 确保可以导入同目录下的 grasp_process.py
 CUR_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -117,45 +118,7 @@ def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
                          intrinsic[0][0], intrinsic[1][1], intrinsic[0][2], intrinsic[1][2],
                          factor_depth)
 
-
-def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
-    
-    #打印位姿信息
-    np.set_printoptions(precision=5, suppress=True)
-    print(f"grasp_translation (m):\n{grasp_translation}")
-    print(f"grasp_rotation_matrix:\n{grasp_rotation}")
-    print(f"width (m): {width:.5f}")
-
-    # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
-    base_pose, _ = convert_new(
-        grasp_translation,
-        grasp_rotation,
-        current_pose,
-        handeye_rotation,
-        handeye_translation,
-        gripper_length=0.04,
-    )
-
-    # 正式执行部分
-    base_pose_np = np.array(base_pose, dtype=float)
-    base_xyz = base_pose_np[:3]
-    base_rxyz = base_pose_np[3:]
-
-    # 预抓取计算01：
-    pre_grasp_pose_01 = base_pose_np.copy()
-    pre_grasp_pose_01[0] -= 0.17  # x 值减去 0.17m
-    pre_grasp_pose_01[2] += 0.13  # z 值增加 0.13m
-    pre_grasp_pose_01[3:] = [0., 0.78, 0.]  # rx, ry, rz
-    print(f"pre-grasp_pose_01:\n{pre_grasp_pose_01}")
-
-    controller, now, eef_state = arm_time_and_state()
-    grip_now = eef_state.gripper_pos
-
-    controller.set_eef_traj([
-        build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(pre_grasp_pose_01, grip_now, now + 2.0),
-    ])
-def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
+def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
     #打印位姿信息
     np.set_printoptions(precision=5, suppress=True)
@@ -182,7 +145,7 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    grip_target = max(0.0, float(width - 0.05))
+    grip_target = max(0.0, float(width - 0.08))
 
     pre_base_pose_np = base_pose_np.copy()
     pre_base_pose_np[2] += 0.02  # 提前 2 cm 避免碰撞
@@ -202,63 +165,58 @@ def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, 
     ])
 
 
-def acquire_and_pregrasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params):
-    handeye_rot = np.array(handeye_rotation, dtype=float)
-    handeye_trans = np.array(handeye_translation, dtype=float)
-    grasp = None
-    while True:
-        color, depth = capture_frame(pipeline, align)
-        if color is None or depth is None:
-            print("[Warn] Failed to capture frame.")
-            continue
-        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
-        if mask is None:
-            print("[Warn] No mask detected.")
-            continue
+def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
+    # 获取目标位置
+    target_pos = get_target_position(pipeline, align, yolo_model,current_state)
+    
+    # 范围判断: x[0-0.65], y[-0.5-0.5], z[0-0.3]
+    if not (0 < target_pos[0] < 0.65 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
+        print(f"[Warn] Target out of range or not detected: {target_pos}")
+        return None
 
-        _, _, eef_state = arm_time_and_state()
-        current_pose = eef_state.pose_6d().copy()
-
-        timestamp = int(time.time())
-        if SAVE_VISUALIZATION and seg_vis is not None:
-            cv2.imwrite(os.path.join(VIS_SAVE_DIR, f'pregrasp_{timestamp}_yolo.jpg'), seg_vis)
-
-        grasp = gp.run_graspnet_for_mask(
-            net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
-            current_pose, handeye_rot, handeye_trans,
-            save_path=os.path.join(VIS_SAVE_DIR, f'pregrasp_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
-        )
-        #判断抓取是否非none
-        if grasp is None:
-            print("[Warn] No grasp detected.")
-            continue
-        #判断抓取高度
-        test_pose, _ = convert_new(
-        grasp['translation'],
-        grasp['rotation_matrix'],
-        current_pose,
-        handeye_rotation,
-        handeye_translation,
-        gripper_length=0.04,
-        )
-        if 0 <= test_pose[0] <= 0.7 and -0.5 < test_pose[1] < 0.5 and 0.007 < test_pose[2] < 0.3:
-           print("first-Valid grasp found.")
-           break
-    if grasp is not None:
-        grasp_control_step0(
-            grasp['translation'], grasp['rotation_matrix'], grasp['width'],
-            current_pose, handeye_rotation, handeye_translation
-        )
-        time.sleep(3)
-    return grasp
+    # 计算预抓取位姿
+    if target_pos[2] < 0.08:
+        pre_grasp_pose = np.array([
+            target_pos[0] - 0.17,
+            target_pos[1],
+            target_pos[2] + 0.13,
+            0.0, 0.78, 0.0
+        ])
+    else:
+        pre_grasp_pose = np.array([
+            target_pos[0] - 0.20,
+            target_pos[1],
+            target_pos[2] + 0.05,
+            0.0, 0.2, 0.0
+        ])
+    
+    print(f"Executing pre-grasp pose: {pre_grasp_pose}")
+    
+    controller, now, eef_state = arm_time_and_state()
+    grip_now = eef_state.gripper_pos
+    
+    controller.set_eef_traj([
+        build_eef_cmd(eef_state.pose_6d().copy(), grip_now, now),
+        build_eef_cmd(pre_grasp_pose, grip_now, now + 3.0),
+    ])
+    time.sleep(3.5)
+    
+    # 返回一个 dummy grasp info 以满足 short_loop 的检查
+    return {'translation': target_pos}
 
 
 def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params):
     handeye_rot = np.array(handeye_rotation, dtype=float)
     handeye_trans = np.array(handeye_translation, dtype=float)
     grasp_candidates = []
+    attempts = 0
 
     while len(grasp_candidates) < 5:
+        attempts += 1
+        if attempts > 30:
+            print("[Warn] Max attempts (30) reached without enough grasp candidates.")
+            return None
+
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
@@ -298,9 +256,6 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         angle_x = grasp.get('angle_x')
         if angle_x is None:
             continue
-        # width = grasp.get('width')
-        # if width is None or width > 0.09:
-        #     continue
         #筛选得到最终的grasp
         grasp_candidates.append((grasp, current_pose))
 
@@ -313,7 +268,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     _, _, eef_state = arm_time_and_state()
     exec_pose = eef_state.pose_6d().copy()
 
-    grasp_control_step1(
+    grasp_control(
         best_grasp['translation'],
         best_grasp['rotation_matrix'],
         best_grasp['width'],
@@ -391,24 +346,34 @@ def short_loop(args):
     color_w, color_h = 640, 480
     camera_info = make_camera_info(color_w, color_h)
     pipeline, align = init_realsense(color_w, color_h)
+    # 查询机械臂状态
+    _, _, current_state = arm_time_and_state()
 
     try:
         if yolo_model is None:
             print('[Info] YOLO 未初始化，无法执行自动抓取流程。')
+            controller.reset_to_home()
+            time.sleep(3.5)
             return
 
         print('[Info] Starting pre-grasp acquisition...')
-        pre_grasp_info = acquire_and_pregrasp(
-            net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params
-        )
+        pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state)
+        
         if pre_grasp_info is None:
             print('[Warn] 未能生成有效的预抓取，终止流程。')
+            controller.reset_to_home()
+            time.sleep(3.5)
             return
 
         print('[Info] Collecting final grasp candidates...')
-        acquire_and_execute_final_grasp(
+        final_grasp = acquire_and_execute_final_grasp(
             net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params
         )
+        if final_grasp is None:
+            print('[Warn] 未能生成有效的最终抓取，复位机械臂。')
+            controller.reset_to_home()
+            time.sleep(3.5)
+            return
     finally:
         pipeline.stop()
         cv2.destroyAllWindows()
@@ -426,3 +391,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
