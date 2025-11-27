@@ -180,14 +180,14 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
             target_pos[0] - 0.17,
             target_pos[1],
             target_pos[2] + 0.17,
-            0.0, 0.9, 0.0
+            0.0, 0.92, 0.0
         ])
     else:
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.2,
+            target_pos[0] - 0.17,
             target_pos[1],
-            target_pos[2] + 0.1,
-            0.0, 0.6, 0.0
+            target_pos[2] + 0.13,
+            0.0, 0.8, 0.0
         ])
     
     print(f"Executing pre-grasp pose: {pre_grasp_pose}")
@@ -211,7 +211,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     grasp_candidates = []
     attempts = 0
 
-    while len(grasp_candidates) < 5:
+    while len(grasp_candidates) < 3:
         attempts += 1
         if attempts > 30:
             print("[Warn] Max attempts (30) reached without enough grasp candidates.")
@@ -220,7 +220,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
-        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=grasp_class)
+        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, grasp_class)
         if mask is None:
             continue
 
@@ -342,7 +342,7 @@ def short_loop(args):
         np.array([ 0.16, -0.13, 0.27, 0.0032, 0.5964, -0.76], dtype=float),
         np.array([ 0.16, 0.13, 0.27, 0.0032, 0.5964, 0.76], dtype=float),
     ]
-    grasp_class = None
+    grasp_class_ = None
     found_target = False
     grip_max = controller.get_robot_config().gripper_width
 
@@ -371,10 +371,10 @@ def short_loop(args):
             color_frame = aligned.get_color_frame()
             if color_frame:
                 img = np.asanyarray(color_frame.get_data())
-                mask, _, locked_class_id = gp.yolo_get_mask(yolo_model, img, yolo_params, None)
+                mask, _, locked_class = gp.yolo_get_mask(yolo_model, img, yolo_params, None)
                 if mask is not None:
                     found_target = True
-                    grasp_class = locked_class_id
+                    grasp_class_ = locked_class
                     break
         
         if found_target:
@@ -388,6 +388,8 @@ def short_loop(args):
         return
 
     try:
+        grasp_class = grasp_class_
+        print(f"[Info] Detected target class: {grasp_class}")
         _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
         pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)

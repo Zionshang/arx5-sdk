@@ -163,16 +163,18 @@ def prepare_end_points(color, depth, camera_info, num_point, device, workspace_m
     return end_points, cloud, cloud_masked, color_masked
 
 
-def yolo_get_mask(yolo_model, color, params, locked_class_id):
+def yolo_get_mask(yolo_model, color, params, locked_class_name):
     """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
     run_params = params.copy()
     # 若已锁定，只检测该类别
-    if locked_class_id is not None:
-        run_params['classes'] = [locked_class_id]
+    if locked_class_name is not None and hasattr(yolo_model, "names"):
+        name_to_id = {v: k for k, v in getattr(yolo_model, "names", {}).items()}
+        if locked_class_name in name_to_id:
+            run_params['classes'] = [name_to_id[locked_class_name]]
 
     results = yolo_model.predict(color, **run_params, verbose=False)
     if not results or results[0].boxes is None or len(results[0].boxes) == 0:
-        return None, None, locked_class_id
+        return None, None, locked_class_name
 
     r = results[0]
     # 找置信度最高的索引
@@ -180,10 +182,9 @@ def yolo_get_mask(yolo_model, color, params, locked_class_id):
     best_class = int(r.boxes.cls[best_idx].item())
 
     # 首次锁定
-    if locked_class_id is None:
-        locked_class_id = best_class
-        name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
-        print(f"[Info] 锁定目标类别: {name} (ID: {best_class})")
+    if locked_class_name is None:
+        locked_class_name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
+        print(f"[Info] 锁定目标类别: {locked_class_name} (ID: {best_class})")
 
     # 生成掩码 (仅使用Box)
     mask = np.zeros(color.shape[:2], dtype=np.uint8)
@@ -194,7 +195,7 @@ def yolo_get_mask(yolo_model, color, params, locked_class_id):
     y1, y2 = np.clip([y1, y2], 0, color.shape[0])
     mask[y1:y2, x1:x2] = 255
 
-    return mask, r.plot(), locked_class_id
+    return mask, r.plot(), locked_class_name
 
 
 def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,
