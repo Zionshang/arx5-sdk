@@ -7,3 +7,4 @@ python/joycon/joycon_robotics.egg-info
 python/graspnet/doc/obs_yolo/**
 python/graspnet/doc/example_data/**
 python/graspnet/doc/grasp_result/**
+python/examples/collect_data/**
