@@ -165,9 +165,9 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     ])
 
 
-def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
+def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class=None):
     # 获取目标位置
-    target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state)
+    target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
     # 范围判断: x[0-0.7], y[-0.5-0.5], z[0-0.3]
     if not (target_pos is not None and 0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
@@ -205,7 +205,7 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
     return {'translation': target_pos}
 
 
-def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params):
+def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class=None):
     handeye_rot = np.array(handeye_rotation, dtype=float)
     handeye_trans = np.array(handeye_translation, dtype=float)
     grasp_candidates = []
@@ -220,7 +220,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
-        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=None)
+        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id=grasp_class)
         if mask is None:
             continue
 
@@ -249,20 +249,24 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         handeye_translation,
         gripper_length=0.04,
         )
-        if test_pose[2] <= 0.007:
-            print("[Warn] Grasp height too low, skipping.")
-            continue
-        #判断抓取角度
         angle_x = grasp.get('angle_x')
-        if angle_x is None:
+        if test_pose[2] <= 0.007 or test_pose[0]>0.65 or angle_x is None:
+            print("[Warn] Grasp height too low or too far or angle_x is None, skipping.")
             continue
         #筛选得到最终的grasp
         grasp_candidates.append((grasp, current_pose))
 
-    best_grasp, _ = min(
-        grasp_candidates,
-        key=lambda item: item[0].get('angle_x', float('inf'))
-    )
+    def get_score(item):
+        g = item[0]
+        if grasp_class == 'ATEC_bottle':
+            return g['translation'][0]
+        elif grasp_class == 'ATEC_box':
+            return g['width']
+        elif grasp_class == 'ATEC_banana':
+            return g.get('angle_x', float('inf'))
+        return g.get('angle_x', float('inf'))
+
+    best_grasp, _ = min(grasp_candidates, key=get_score)
 
     # Re-read pose before execution to minimize drift.
     _, _, eef_state = arm_time_and_state()
@@ -386,7 +390,7 @@ def short_loop(args):
     try:
         _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
-        pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state)
+        pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)
         
         if pre_grasp_info is None:
             print('[Warn] 未能生成有效的预抓取，终止流程。')
@@ -396,7 +400,7 @@ def short_loop(args):
 
         print('[Info] Collecting final grasp candidates...')
         final_grasp = acquire_and_execute_final_grasp(
-            net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params
+            net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class
         )
         if final_grasp is None:
             print('[Warn] 未能生成有效的最终抓取，复位机械臂。')

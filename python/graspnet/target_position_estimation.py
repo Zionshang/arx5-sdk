@@ -21,7 +21,7 @@ handeye_rotation = [[-0.02489131, -0.16662419 , 0.98570624],
  [-0.99968  ,   0.00859452, -0.02379136],
  [-0.00450745, -0.98598302, -0.1667848 ]]
 handeye_translation = [-0.09760795,0.02448454,0.0883561]
-def get_target_position(pipeline=None, align=None, yolo_model=None,current_state=None):
+def get_target_position(pipeline=None, align=None, yolo_model=None,current_state=None, target_class=None):
     # 相机预热
     for _ in range(10):
         pipeline.wait_for_frames()
@@ -61,9 +61,14 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
             print(f"YOLO detection visualization saved to {vis_path}")
 
         if results and results[0].boxes:
-            best_box = max(results[0].boxes, key=lambda b: b.conf)
-            detected_class = yolo_model.names[int(best_box.cls)]
-            break
+            boxes = results[0].boxes
+            if target_class:
+                boxes = [b for b in boxes if yolo_model.names[int(b.cls)] == target_class]
+            
+            if boxes:
+                best_box = max(boxes, key=lambda b: b.conf)
+                detected_class = yolo_model.names[int(best_box.cls)]
+                break
 
     if best_box is not None:
         x1, y1, x2, y2 = best_box.xyxy[0].cpu().numpy()
