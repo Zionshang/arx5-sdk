@@ -168,6 +168,9 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
     # 获取目标位置
     target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state)
+    if target_pos is None:
+        print("[Warn] Target not detected.")
+        return None
     
     # 范围判断: x[0-0.7], y[-0.5-0.5], z[0-0.3]
     if not (0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
@@ -334,9 +337,9 @@ def short_loop(args):
 
     # 预抓取位姿确定
     prep_poses = [
-        np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float),
-        np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float),
-        np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float),
+        np.array([ 0.16, 0.0, 0.2645, -0., 0.62, 0. ], dtype=float),
+        np.array([ 0.16, -0.13, 0.27, 0.0032, 0.5964, -0.76], dtype=float),
+        np.array([ 0.16, 0.13, 0.27, 0.0032, 0.5964, 0.76], dtype=float),
     ]
     grasp_class = None
     found_target = False
@@ -422,5 +425,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
