@@ -67,7 +67,7 @@ def main():
     found_arm_pose = None
 
     if not yolo_model:
-        return here, far, detected_class
+        return here, far, obs_class
     # 2. Define Search Positions
     # Pos 0: User defined
     pos0 = np.array([0.1602, 0.001, 0.2645, -0., 0.62, 0.])
@@ -82,7 +82,6 @@ def main():
     positions = [pos0, pos1, pos2, pos3, pos4]
     found_idx = -1
     target_pos = None
-    detected_class = None
     
     try:
         # 3. Search Loop
@@ -106,7 +105,7 @@ def main():
             print("\n[Result] Target not detected in any position.")
         else:
             print(f"\n[Result] Target detected at Position {found_idx}")
-            print(f"Target Class: {detected_class}")
+            print(f"Target Class: {obs_class}")
             print(f"Target Position (Base Frame): {target_pos}")
 
             # Save visualization
