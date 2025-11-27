@@ -27,6 +27,7 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
         pipeline.wait_for_frames()
     
     target_pos_base = None 
+    detected_class = None
 
     best_box = None
     color_img = depth_img = None
@@ -59,8 +60,9 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
             cv2.imwrite(vis_path, vis_img)
             print(f"YOLO detection visualization saved to {vis_path}")
 
-        if results and results[0].boxes and len(results[0].boxes) > 0:
-            best_box = results[0].boxes[0]
+        if results and results[0].boxes:
+            best_box = max(results[0].boxes, key=lambda b: b.conf)
+            detected_class = yolo_model.names[int(best_box.cls)]
             break
 
     if best_box is not None:
@@ -112,8 +114,8 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
 
     # Cleanup
     pipeline.stop()
-    return target_pos_base
+    return target_pos_base, detected_class
 
 if __name__ == "__main__":
-    pos = get_target_position()
-    print(f"Final Result: {pos}")
+    pos, cls = get_target_position()
+    print(f"Final Result: {pos}, Class: {cls}")

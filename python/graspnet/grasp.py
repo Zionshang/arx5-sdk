@@ -167,10 +167,10 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 
 def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
     # 获取目标位置
-    target_pos = get_target_position(pipeline, align, yolo_model,current_state)
+    target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state)
     
-    # 范围判断: x[0-0.65], y[-0.5-0.5], z[0-0.3]
-    if not (0 < target_pos[0] < 0.65 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
+    # 范围判断: x[0-0.7], y[-0.5-0.5], z[0-0.3]
+    if not (0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
         return None
 
@@ -326,35 +326,66 @@ def short_loop(args):
     # arm_init
     controller = init_arm_controller()
     controller.reset_to_home()
-    # 预抓取位姿
-    # prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
-    #竖直向下
-    # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
-    #斜向下
-    prep_pose = np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float)
-    _, start_ts, eef_state = arm_time_and_state()
-    grip_home = eef_state.gripper_pos
-    grip_max = controller.get_robot_config().gripper_width
-
-    controller.set_eef_traj([
-        build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-        build_eef_cmd(prep_pose, grip_home, start_ts + 3.0),
-        build_eef_cmd(prep_pose, grip_max, start_ts + 5.0),
-    ])
-    time.sleep(6)
+    time.sleep(1)
     # RealSense + 相机内参
     color_w, color_h = 640, 480
     camera_info = make_camera_info(color_w, color_h)
     pipeline, align = init_realsense(color_w, color_h)
+
+    # 预抓取位姿确定
+    prep_poses = [
+        np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float),
+        np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float),
+        np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float),
+    ]
+    grasp_class = None
+    found_target = False
+    grip_max = controller.get_robot_config().gripper_width
+
+    # Open gripper first
+    _, start_ts, eef_state = arm_time_and_state()
+    controller.set_eef_traj([
+        build_eef_cmd(eef_state.pose_6d().copy(), eef_state.gripper_pos, start_ts),
+        build_eef_cmd(eef_state.pose_6d().copy(), grip_max, start_ts + 1)
+    ])
+    time.sleep(1)
+
+    for pose in prep_poses:
+        _, start_ts, eef_state = arm_time_and_state()
+        grip_home = eef_state.gripper_pos
+        
+        controller.set_eef_traj([
+            build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
+            build_eef_cmd(pose, grip_home, start_ts + 3.0),
+        ])
+        time.sleep(3)
+        
+        # YOLO 检测
+        for _ in range(10):
+            frames = pipeline.wait_for_frames()
+            aligned = align.process(frames)
+            color_frame = aligned.get_color_frame()
+            if color_frame:
+                img = np.asanyarray(color_frame.get_data())
+                mask, _, locked_class_id = gp.yolo_get_mask(yolo_model, img, yolo_params)
+                if mask is not None:
+                    found_target = True
+                    grasp_class = locked_class_id
+                    break
+        
+        if found_target:
+            break
+    
+    if not found_target:
+        print("[Info] No target detected in any pose. Returning home.")
+        controller.reset_to_home()
+        time.sleep(3.5)
+        pipeline.stop()
+        return
     # 查询机械臂状态
     _, _, current_state = arm_time_and_state()
 
     try:
-        if yolo_model is None:
-            print('[Info] YOLO 未初始化，无法执行自动抓取流程。')
-            controller.reset_to_home()
-            time.sleep(3.5)
-            return
 
         print('[Info] Starting pre-grasp acquisition...')
         pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state)
