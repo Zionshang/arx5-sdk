@@ -112,8 +112,6 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
     else:
         print("No target detected after 10 attempts.")
 
-    # Cleanup
-    pipeline.stop()
     return target_pos_base, detected_class
 
 if __name__ == "__main__":

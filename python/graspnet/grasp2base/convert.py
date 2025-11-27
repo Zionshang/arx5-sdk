@@ -56,8 +56,8 @@ def convert_new(
     T_cam2ee = np.eye(4, dtype=float)
     T_cam2ee[:3, :3] = handeye_rot
     T_cam2ee[:3, 3] = handeye_trans
-    print(f"相机坐标系 → 末端坐标系(平移):\n{handeye_trans}\n")
-    print(f"相机坐标系 → 末端坐标系(旋转):\n{handeye_rot}\n")
+    # print(f"相机坐标系 → 末端坐标系(平移):\n{handeye_trans}\n")
+    # print(f"相机坐标系 → 末端坐标系(旋转):\n{handeye_rot}\n")
 
     # =============== 4) 当前末端姿态：构造【末端坐标系 → 基座坐标系】的变换 ================
     #   如果你的机械臂 API 返回的 (x,y,z,rx,ry,rz) 本身就表示“末端在基座系的位姿”，
@@ -75,8 +75,8 @@ def convert_new(
     T_ee2base = np.eye(4, dtype=float)
     T_ee2base[:3, :3] = R_ee2base
     T_ee2base[:3, 3] = [x_ee, y_ee, z_ee]
-    print(f"末端坐标系 → 基座坐标系(平移):\n{[x_ee, y_ee, z_ee]}\n")
-    print(f"末端坐标系 → 基座坐标系(旋转):\n{R_ee2base}\n")
+    # print(f"末端坐标系 → 基座坐标系(平移):\n{[x_ee, y_ee, z_ee]}\n")
+    # print(f"末端坐标系 → 基座坐标系(旋转):\n{R_ee2base}\n")
     # =============== 5) 计算最终【抓取坐标系(对齐后) → 基座坐标系】 ================
     #
     #   T_gripper2base = T_ee2base * (T_cam2ee * T_gripper2cam)
@@ -88,8 +88,8 @@ def convert_new(
     # 分离出旋转 + 平移
     final_rot_mat = T_gripper2base[:3, :3]
     final_trans = T_gripper2base[:3, 3]
-    print(f"抓取坐标系 → 基座坐标系(平移):\n{final_trans}\n")
-    print(f"抓取坐标系 → 基座坐标系(旋转):\n{final_rot_mat}\n")
+    # print(f"抓取坐标系 → 基座坐标系(平移):\n{final_trans}\n")
+    # print(f"抓取坐标系 → 基座坐标系(旋转):\n{final_rot_mat}\n")
 
     # =============== 6) 将最终旋转矩阵变为欧拉角 (如果你需要欧拉角作为机械臂指令) ================
     #   再次强调，具体要什么顺序，需要和你的机械臂驱动匹配。

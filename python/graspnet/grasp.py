@@ -168,12 +168,9 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
     # 获取目标位置
     target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state)
-    if target_pos is None:
-        print("[Warn] Target not detected.")
-        return None
-    
+
     # 范围判断: x[0-0.7], y[-0.5-0.5], z[0-0.3]
-    if not (0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
+    if not (target_pos is not None and 0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
         return None
 
@@ -182,15 +179,15 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state):
         pre_grasp_pose = np.array([
             target_pos[0] - 0.17,
             target_pos[1],
-            target_pos[2] + 0.13,
-            0.0, 0.78, 0.0
+            target_pos[2] + 0.17,
+            0.0, 0.9, 0.0
         ])
     else:
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.20,
+            target_pos[0] - 0.2,
             target_pos[1],
-            target_pos[2] + 0.05,
-            0.0, 0.2, 0.0
+            target_pos[2] + 0.1,
+            0.0, 0.6, 0.0
         ])
     
     print(f"Executing pre-grasp pose: {pre_grasp_pose}")
@@ -364,13 +361,13 @@ def short_loop(args):
         time.sleep(3)
         
         # YOLO 检测
-        for _ in range(10):
+        for _ in range(15):
             frames = pipeline.wait_for_frames()
             aligned = align.process(frames)
             color_frame = aligned.get_color_frame()
             if color_frame:
                 img = np.asanyarray(color_frame.get_data())
-                mask, _, locked_class_id = gp.yolo_get_mask(yolo_model, img, yolo_params)
+                mask, _, locked_class_id = gp.yolo_get_mask(yolo_model, img, yolo_params, None)
                 if mask is not None:
                     found_target = True
                     grasp_class = locked_class_id
@@ -385,11 +382,9 @@ def short_loop(args):
         time.sleep(3.5)
         pipeline.stop()
         return
-    # 查询机械臂状态
-    _, _, current_state = arm_time_and_state()
 
     try:
-
+        _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
         pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state)
         
@@ -425,4 +420,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
