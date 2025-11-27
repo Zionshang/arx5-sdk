@@ -64,9 +64,10 @@ def main():
     pipeline, align = init_camera()
     
     here = left = right = opposite = None
+    found_arm_pose = None
 
     if not yolo_model:
-        return here, left, right, opposite
+        return here, left, right, opposite, None, None
 
     # 2. Define Search Positions
     # Pos 0: User defined
@@ -96,57 +97,56 @@ def main():
             
             if target_pos is not None:
                 found_idx = i
+                found_arm_pose = pos
                 break
         
         # 4. Logic Check
         if found_idx == -1:
             print("\n[Result] Target not detected in any position.")
+            opposite = True
         else:
             print(f"\n[Result] Target detected at Position {found_idx}")
             print(f"Target Position (Base Frame): {target_pos}")
 
-            # Case: Found at Position 3
-            if found_idx == 3:
-                opposite = True
-                print(">>> 目标物体在对面，需要移动到对面去。")
+            dist = np.linalg.norm(target_pos) # Distance from base origin
+            print(f"Distance to target: {dist:.3f}m")
             
-            # Case: Found at Position 0, 1, 2
+            # Check 'here' condition
+            if (dist < 0.70 and 
+                0 < target_pos[0] < 0.7 and 
+                -0.5 < target_pos[1] < 0.5 and 
+                0 < target_pos[2] < 0.3):
+                here = True
+                print(">>> 目标物体在当前位置附近，无需移动。")
+                
+                # Save visualization
+                frames = pipeline.wait_for_frames()
+                aligned_frames = align.process(frames)
+                color_frame = aligned_frames.get_color_frame()
+                if color_frame:
+                    img = np.asanyarray(color_frame.get_data())
+                    res = yolo_model.predict(img, conf=0.4, verbose=False)
+                    if res:
+                        ts = int(time.time())
+                        vis_path = os.path.join(CUR_DIR, "doc", f"search_success_{ts}.jpg")
+                        os.makedirs(os.path.dirname(vis_path), exist_ok=True)
+                        cv2.imwrite(vis_path, res[0].plot())
+                        print(f" - 检测结果图已保存: {vis_path}")
             else:
-                dist = np.linalg.norm(target_pos) # Distance from base origin
-                print(f"Distance to target: {dist:.3f}m")
-                y = target_pos[1]
-
+                # Not satisfying 'here' condition
                 if found_idx == 1:
                     left = True
+                    print(">>> 目标物体在左侧 (View 1)，需要向左移动。")
                 elif found_idx == 2:
                     right = True
-                elif found_idx == 0:
-                    if dist < 0.70 and 0 < target_pos[0] < 0.65 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3:
-                        here = True
-                        print(">>> 目标物体在当前位置附近，无需移动。")
-                        frames = pipeline.wait_for_frames()
-                        aligned_frames = align.process(frames)
-                        color_frame = aligned_frames.get_color_frame()
-                        if color_frame:
-                            img = np.asanyarray(color_frame.get_data())
-                            res = yolo_model.predict(img, conf=0.4, verbose=False)
-                            if res:
-                                ts = int(time.time())
-                                vis_path = os.path.join(CUR_DIR, "doc", f"search_success_{ts}.jpg")
-                                os.makedirs(os.path.dirname(vis_path), exist_ok=True)
-                                cv2.imwrite(vis_path, res[0].plot())
-                                print(f" - 检测结果图已保存: {vis_path}")
-                    else:
-                        if y > 0:
-                            left = True
-                        else:
-                            right = True
-            if left:
-                print(">>> 目标物体在左侧，需要向左移动。")
-            if right:
-                print(">>> 目标物体在右侧，需要向右移动。")
-
-  
+                    print(">>> 目标物体在右侧 (View 2)，需要向右移动。")
+                elif found_idx == 3:
+                    opposite = True
+                    print(">>> 目标物体在对面 (View 3)，需要移动到对面去。")
+                else:
+                    # found_idx == 0 but not here. Fallback to opposite as implied by "dist is none -> opposite" (catch-all for failures)
+                    opposite = True
+                    print(">>> 目标物体在当前视角 (View 0) 但不满足位置条件，建议移动到对面。")
 
     finally:
         pipeline.stop()
@@ -154,7 +154,7 @@ def main():
         controller.reset_to_home()
         time.sleep(3.5)
     
-    return here, left, right, opposite
+    return here, left, right, opposite, target_pos, found_arm_pose
 
 if __name__ == "__main__":
     main()
