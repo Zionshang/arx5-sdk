@@ -37,8 +37,20 @@ import keyboard_teleop
 from arx5_interface import Arx5CartesianController, EEFState, Gain, LogLevel
 
 
+def _next_image_index(save_dir: str) -> int:
+    """Find the next image index based on existing images to avoid overwriting."""
+    indices = []
+    for fname in os.listdir(save_dir):
+        if fname.startswith("images") and fname.endswith(".jpg"):
+            num = fname[len("images"):-4]
+            if num.isdigit():
+                indices.append(int(num))
+    return max(indices) + 1 if indices else 0
+
+
 def data_collect(model="X5", interface="can0"):
     global count
+    count = _next_image_index(image_save_path)
     
     # 初始化机械臂控制器
     controller = Arx5CartesianController(model, interface)
