@@ -5,8 +5,7 @@ channels:
 dependencies:
   - python=3.8
   - ros-noetic-kdl-parser
-  # - cxx-compiler  # for x86_64
-  # for aarch64 (arm64), use the system compiler
+  - cxx-compiler=1.3.0
   - urdfdom=1.0.4
   - urdfdom_headers=1.0.5
   - cmake>=3.28

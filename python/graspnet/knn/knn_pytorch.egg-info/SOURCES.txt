@@ -1,7 +1,7 @@
 setup.py
-/home/jyx/graspnet/knn/src/vision.cpp
-/home/jyx/graspnet/knn/src/cpu/knn_cpu.cpp
-/home/jyx/graspnet/knn/src/cuda/knn.cu
+/home/jetson/arx5-sdk/python/graspnet/knn/src/vision.cpp
+/home/jetson/arx5-sdk/python/graspnet/knn/src/cpu/knn_cpu.cpp
+/home/jetson/arx5-sdk/python/graspnet/knn/src/cuda/knn.cu
 knn_pytorch.egg-info/PKG-INFO
 knn_pytorch.egg-info/SOURCES.txt
 knn_pytorch.egg-info/dependency_links.txt
