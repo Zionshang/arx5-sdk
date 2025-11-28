@@ -31,7 +31,7 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
 
     best_box = None
     color_img = depth_img = None
-    for attempt in range(10):
+    for attempt in range(15):
         frames = pipeline.wait_for_frames()
         aligned_frames = align.process(frames)
         color_frame = aligned_frames.get_color_frame()
@@ -66,9 +66,14 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
                 boxes = [b for b in boxes if yolo_model.names[int(b.cls)] == target_class]
             
             if boxes:
-                best_box = max(boxes, key=lambda b: b.conf)
-                detected_class = yolo_model.names[int(best_box.cls)]
-                break
+                temp_box = max(boxes, key=lambda b: b.conf)
+                x1, y1, x2, y2 = temp_box.xyxy[0].cpu().numpy()
+                u, v = int((x1 + x2) / 2), int((y1 + y2) / 2)
+                
+                if depth_img[v, u] > 0:
+                    best_box = temp_box
+                    detected_class = yolo_model.names[int(best_box.cls)]
+                    break
 
     if best_box is not None:
         x1, y1, x2, y2 = best_box.xyxy[0].cpu().numpy()
@@ -115,7 +120,7 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
         else:
             print("Warning: Invalid depth at center pixel.")
     else:
-        print("No target detected after 10 attempts.")
+        print("No target detected after 15 attempts.")
 
     return target_pos_base, detected_class
 

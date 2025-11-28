@@ -362,7 +362,7 @@ def short_loop(args):
             build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
             build_eef_cmd(pose, grip_home, start_ts + 3.0),
         ])
-        time.sleep(3)
+        time.sleep(3.5)
         
         # YOLO 检测
         for _ in range(15):
