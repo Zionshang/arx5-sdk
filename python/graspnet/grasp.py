@@ -145,10 +145,10 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
-    grip_target = max(0.0, float(width - 0.08))
+    grip_target = max(0.0, float(width - 0.09))
 
     pre_base_pose_np = base_pose_np.copy()
-    pre_base_pose_np[2] += 0.02  # 提前 2 cm 避免碰撞
+    pre_base_pose_np[2] += 0.035  # 提前 3.5 cm 避免碰撞
     lift_pose = base_pose_np.copy()
     lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
 
@@ -175,19 +175,19 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         return None
 
     # 计算预抓取位姿
-    if target_pos[2] < 0.08:
+    if target_pos[2] < 0.10:
         pre_grasp_pose = np.array([
             target_pos[0] - 0.17,
             target_pos[1],
             target_pos[2] + 0.17,
-            0.0, 0.92, 0.0
+            0.0, 0.94, 0.0
         ])
     else:
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.17,
+            target_pos[0] - 0.20,
             target_pos[1],
             target_pos[2] + 0.13,
-            0.0, 0.8, 0.0
+            0.0, 0.65, 0.0
         ])
     
     print(f"Executing pre-grasp pose: {pre_grasp_pose}")
@@ -211,7 +211,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     grasp_candidates = []
     attempts = 0
 
-    while len(grasp_candidates) < 3:
+    while len(grasp_candidates) < 5:
         attempts += 1
         if attempts > 30:
             print("[Warn] Max attempts (30) reached without enough grasp candidates.")
@@ -250,7 +250,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         gripper_length=0.04,
         )
         angle_x = grasp.get('angle_x')
-        if test_pose[2] <= 0.007 or test_pose[0]>0.65 or angle_x is None:
+        if test_pose[2] <= 0.007 or test_pose[0]>0.7 or angle_x is None:
             print("[Warn] Grasp height too low or too far or angle_x is None, skipping.")
             continue
         #筛选得到最终的grasp
