@@ -169,8 +169,8 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     # 获取目标位置
     target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
-    # 范围判断: x[0-0.7], y[-0.5-0.5], z[0-0.3]
-    if not (target_pos is not None and 0 < target_pos[0] < 0.7 and -0.5 < target_pos[1] < 0.5 and 0 < target_pos[2] < 0.3):
+    # 范围判断: x[0-0.7], y[-0.55-0.55], z[0-0.35]
+    if not (target_pos is not None and 0 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and 0 < target_pos[2] < 0.35):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
         return None
 
@@ -213,8 +213,8 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
 
     while len(grasp_candidates) < 5:
         attempts += 1
-        if attempts > 30:
-            print("[Warn] Max attempts (30) reached without enough grasp candidates.")
+        if attempts > 40:
+            print("[Warn] Max attempts (40) reached without enough grasp candidates.")
             return None
 
         color, depth = capture_frame(pipeline, align)

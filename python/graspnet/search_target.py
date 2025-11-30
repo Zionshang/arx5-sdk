@@ -71,13 +71,13 @@ def main():
     # 2. Define Search Positions
     # Pos 0: User defined
     pos0 = np.array([0.1602, 0.001, 0.2645, -0., 0.62, 0.])
-    # Pos 1: Placeholder (Look Left)
-    pos1 = np.array([0.1602, 0.15, 0.2645, -0., 0.62, 0.3]) 
-    # Pos 2: Placeholder (Look Right)
-    pos2 = np.array([0.1602, -0.15, 0.2645, -0., 0.62, -0.3])
-    # Pos 3: Placeholder (Look Forward/Up)
-    pos3 = np.array([0.25, 0.0, 0.4, 0.0, 0.2, 0.0]) 
-    pos4 = np.array([0.1602, 0.001, 0.2645, -0., 0.62, 0.])
+    # Pos 1: Placeholder (Look Right)
+    pos1 = np.array([ 0.16, -0.13, 0.27, 0.0032, 0.5964, -0.76]) 
+    # Pos 2: Placeholder (Look Left)
+    pos2 = np.array([ 0.16, 0.13, 0.27, 0.0032, 0.5964, 0.76])
+    # Pos 3: Placeholder (Look forwardLeft/Right)
+    pos3 = np.array([ 0.46, 0.1, 0.27, 0.0032, 0.5964, 0.6]) 
+    pos4 = np.array([ 0.46, -0.1, 0.27, 0.0032, 0.5964, -0.6])
 
     positions = [pos0, pos1, pos2, pos3, pos4]
     found_idx = -1
@@ -126,10 +126,10 @@ def main():
             print(f"Distance to target: {dist:.3f}m")
             
             # Check 'here' condition
-            if (dist < 0.70 and 
+            if (dist < 0.75 and 
                 0 < target_pos[0] < 0.7 and 
-                -0.5 < target_pos[1] < 0.5 and 
-                0 < target_pos[2] < 0.3):
+                -0.55 < target_pos[1] < 0.55 and 
+                0 < target_pos[2] < 0.4):
                 here = True
                 print(">>> 目标物体在当前位置附近，无需移动。")
             else:

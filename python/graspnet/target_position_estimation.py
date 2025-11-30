@@ -44,7 +44,7 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
         color_img = np.asanyarray(color_frame.get_data())
         depth_img = np.asanyarray(depth_frame.get_data())
 
-        print(f"Running YOLO detection (attempt {attempt + 1}/10)...")
+        print(f"Running YOLO detection (attempt {attempt + 1}/20)...")
         results = yolo_model.predict(color_img, conf=0.4, iou=0.7, verbose=False)
         vis_img = None
         if results:
