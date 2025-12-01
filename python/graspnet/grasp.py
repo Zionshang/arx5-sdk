@@ -207,8 +207,8 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         best_roll = initial_roll
         min_size = float('inf')
 
-        # 2. Scan: Right (0->1.57) 
-        offsets = np.concatenate([np.arange(0, 1.6, 0.16)])
+        # 2. Scan
+        offsets = np.concatenate([np.arange(0, 1.6, 0.16),[0], np.arange(-0.16, -1.6, -0.16)])
         
         for offset in offsets:
             r = initial_roll + offset
