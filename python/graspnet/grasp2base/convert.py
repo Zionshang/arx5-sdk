@@ -29,8 +29,6 @@ def convert_new(
     T_grasp2cam = np.eye(4, dtype=float)
     T_grasp2cam[:3, :3] = grasp_rotation_mat
     T_grasp2cam[:3, 3] = grasp_translation
-    print(f"抓取坐标系 → 相机坐标系(平移):\n{grasp_translation}\n")
-    print(f"抓取坐标系 → 相机坐标系(旋转):\n{grasp_rotation_mat}\n")
 
     # =============== 2) 在 GraspNet 的输出上做「轴对齐 + 夹爪补偿」 ================
 

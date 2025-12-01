@@ -239,6 +239,7 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         ctrl, now, _ = arm_time_and_state()
         ctrl.set_eef_traj([build_eef_cmd(pre_grasp_pose, grip_now, now + 1)])
         time.sleep(1.5)
+        print(f"[Info] Best roll found: {best_roll:.3f} rad")
     
     # 返回一个 dummy grasp info 以满足 short_loop 的检查
     return {'translation': target_pos}
