@@ -41,7 +41,7 @@ def move_arm(controller, target_pose, duration=3.0):
     time.sleep(duration + 1)
 
 def init_yolo():
-    weights = os.path.join(CUR_DIR, 'yolo11', 'best_atec.pt')
+    weights = os.path.join(CUR_DIR, 'yolo11', 'best_atec02.pt')
     if os.path.exists(weights):
         return gp.YOLO(weights)
     print(f"YOLO weights not found at {weights}")

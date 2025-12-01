@@ -25,7 +25,7 @@ import shutil
 from typing import List, Optional
 
 
-DEFAULT_DIR = "/home/jyx/python_ws/Dataset-Conversion/data/jpg_images"
+DEFAULT_DIR = "/home/jyx/Downloads/LANDrop/collect_data"
 try:
     # keep this list in sync with typical image extensions
     IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}
@@ -84,7 +84,7 @@ def renumber_folder(folder: str) -> None:
 
     # Phase 2: rename temporary files to final sequential names Img0.ext ..
     for i, (tmp_path, ext) in enumerate(tmp_names):
-        final_name = f"Img{i}{ext}"
+        final_name = f"Img{i+756}{ext}"
         final_path = os.path.join(folder, final_name)
         try:
             os.rename(tmp_path, final_path)
