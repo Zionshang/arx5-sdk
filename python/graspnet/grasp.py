@@ -169,8 +169,8 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     # 获取目标位置
     target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
-    # 范围判断: x[0-0.7], y[-0.55-0.55], z[0-0.35]
-    if not (target_pos is not None and 0 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and 0 < target_pos[2] < 0.35):
+    # 范围判断: x[-0.1-0.7], y[-0.55-0.55], z[0-0.35]
+    if not (target_pos is not None and -0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and 0 < target_pos[2] < 0.35):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
         return None
 
@@ -200,6 +200,45 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         build_eef_cmd(pre_grasp_pose, grip_now, now + 3.0),
     ])
     time.sleep(3.5)
+
+    if grasp_class == 'ATEC_box':
+        print("[Info] Optimizing ATEC_box orientation...")
+        initial_roll = pre_grasp_pose[3]
+        best_roll = initial_roll
+        min_size = float('inf')
+
+        # 2. Scan: Right (0->1.57) 
+        offsets = np.concatenate([np.arange(0, 1.6, 0.16)])
+        
+        for offset in offsets:
+            r = initial_roll + offset
+            if not (-1.65 < r < 1.65): continue
+            
+            pose = pre_grasp_pose.copy(); pose[3] = r
+            ctrl, now, _ = arm_time_and_state()
+            ctrl.set_eef_traj([build_eef_cmd(pose, grip_now, now + 0.4)])
+            time.sleep(0.9)
+            
+            color, _ = capture_frame(pipeline, align, 500)
+            if color is None: continue
+            for _ in range(10): pipeline.wait_for_frames()
+            try:
+                res = yolo_model(color, verbose=False, conf=0.4)
+                for b in res[0].boxes:
+                    if res[0].names[int(b.cls[0])] == 'ATEC_box':
+                        w, h = float(b.xywh[0][2]), float(b.xywh[0][3])
+                        if offsets==0:min_size = w * h
+                        if w < h: # Require horizontal < vertical
+                            size = w * h
+                            if size <= min_size:
+                                min_size = size
+                                best_roll = r
+            except: pass
+        
+        pre_grasp_pose[3] = best_roll
+        ctrl, now, _ = arm_time_and_state()
+        ctrl.set_eef_traj([build_eef_cmd(pre_grasp_pose, grip_now, now + 1)])
+        time.sleep(1.5)
     
     # 返回一个 dummy grasp info 以满足 short_loop 的检查
     return {'translation': target_pos}
@@ -410,7 +449,7 @@ def short_loop(args):
             time.sleep(3.5)
             return
     finally:
-        pipeline.stop()
+        # pipeline.stop()
         cv2.destroyAllWindows()
 
 # --------------------------- 入口 ---------------------------

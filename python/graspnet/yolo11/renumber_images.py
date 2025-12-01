@@ -25,7 +25,7 @@ import shutil
 from typing import List, Optional
 
 
-DEFAULT_DIR = "/home/zishang/python-ws/yolo_data/jpg_images"
+DEFAULT_DIR = "/home/jyx/python_ws/Dataset-Conversion/data/jpg_images"
 try:
     # keep this list in sync with typical image extensions
     IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp'}

@@ -1,391 +1,391 @@
-"""
-精炼版实时抓取推理入口。
+# """
+# 精炼版实时抓取推理入口。
 
-功能：
-- 复用 grasp_process.py 中已有的函数（YOLO 分割、点云准备、GraspNet 推理与可视化）。
-- 负责初始化相机、模型与可视化，并在循环中调用现成函数得到抓取结果：
-  translation, rotation_matrix, width。
+# 功能：
+# - 复用 grasp_process.py 中已有的函数（YOLO 分割、点云准备、GraspNet 推理与可视化）。
+# - 负责初始化相机、模型与可视化，并在循环中调用现成函数得到抓取结果：
+#   translation, rotation_matrix, width。
 
-注意：不修改 grasp_process.py，尽量保持本文件简洁。
-"""
+# 注意：不修改 grasp_process.py，尽量保持本文件简洁。
+# """
 
-from __future__ import annotations
+# from __future__ import annotations
 
-import os
-import sys
-import time
-from typing import Optional, Tuple, Any
+# import os
+# import sys
+# import time
+# from typing import Optional, Tuple, Any
 
-import numpy as np
-import cv2
-import open3d as o3d
-import pyrealsense2 as rs
-from scipy.spatial.transform import Rotation as R
-# 确保可以导入项目根下的 arx5_interface（与 python/examples 中用法保持一致）
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT_DIR not in sys.path:
-    sys.path.insert(0, ROOT_DIR)
-    try:
-        os.chdir(ROOT_DIR)
-    except Exception:
-        pass
-from arx5_interface import Arx5CartesianController, EEFState
-from grasp2base.convert import convert_new
-# 同目录导入现有实现（其内部已设置 models/utils/graspnetAPI 路径）
-# 确保可以导入同目录下的 grasp_process.py
-CUR_DIR = os.path.dirname(os.path.abspath(__file__))
-if CUR_DIR not in sys.path:
-    sys.path.insert(0, CUR_DIR)
-import grasp_process as gp
-#手眼标定外参
-handeye_rotation = [[-0.02489131, -0.16662419 , 0.98570624],
- [-0.99968  ,   0.00859452, -0.02379136],
- [-0.00450745, -0.98598302, -0.1667848 ]]
-handeye_translation = [-0.09760795,0.02448454,0.0883561]
+# import numpy as np
+# import cv2
+# import open3d as o3d
+# import pyrealsense2 as rs
+# from scipy.spatial.transform import Rotation as R
+# # 确保可以导入项目根下的 arx5_interface（与 python/examples 中用法保持一致）
+# ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# if ROOT_DIR not in sys.path:
+#     sys.path.insert(0, ROOT_DIR)
+#     try:
+#         os.chdir(ROOT_DIR)
+#     except Exception:
+#         pass
+# from arx5_interface import Arx5CartesianController, EEFState
+# from grasp2base.convert import convert_new
+# # 同目录导入现有实现（其内部已设置 models/utils/graspnetAPI 路径）
+# # 确保可以导入同目录下的 grasp_process.py
+# CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+# if CUR_DIR not in sys.path:
+#     sys.path.insert(0, CUR_DIR)
+# import grasp_process as gp
+# #手眼标定外参
+# handeye_rotation = [[-0.02489131, -0.16662419 , 0.98570624],
+#  [-0.99968  ,   0.00859452, -0.02379136],
+#  [-0.00450745, -0.98598302, -0.1667848 ]]
+# handeye_translation = [-0.09760795,0.02448454,0.0883561]
 
-T_o3d = np.eye(4, dtype=np.float64)
-T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
-                          [0.0, -1.0, 0.0],
-                          [0.0, 0.0, -1.0]], dtype=np.float64)
+# T_o3d = np.eye(4, dtype=np.float64)
+# T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
+#                           [0.0, -1.0, 0.0],
+#                           [0.0, 0.0, -1.0]], dtype=np.float64)
  
 
-# =============== 机械臂控制（简洁接口） ===============
-_ARM_CONTROLLER = None  # 缓存控制器，避免重复初始化
+# # =============== 机械臂控制（简洁接口） ===============
+# _ARM_CONTROLLER = None  # 缓存控制器，避免重复初始化
 
-def init_arm_controller(model: str = "X5", interface: str = "can0"):
-    """初始化并返回机械臂控制器（懒加载，重复调用直接复用）。"""
-    global _ARM_CONTROLLER
-    if _ARM_CONTROLLER is not None:
-        return _ARM_CONTROLLER
-    # 确保可以导入 arx5_interface
-    PY_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if PY_ROOT not in sys.path:
-        sys.path.insert(0, PY_ROOT)
-    _ARM_CONTROLLER = Arx5CartesianController(model, interface)
-    return _ARM_CONTROLLER
+# def init_arm_controller(model: str = "X5", interface: str = "can0"):
+#     """初始化并返回机械臂控制器（懒加载，重复调用直接复用）。"""
+#     global _ARM_CONTROLLER
+#     if _ARM_CONTROLLER is not None:
+#         return _ARM_CONTROLLER
+#     # 确保可以导入 arx5_interface
+#     PY_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#     if PY_ROOT not in sys.path:
+#         sys.path.insert(0, PY_ROOT)
+#     _ARM_CONTROLLER = Arx5CartesianController(model, interface)
+#     return _ARM_CONTROLLER
 
-def arm_time_and_state(model: str = "X5", interface: str = "can0"):
-    ctrl = init_arm_controller(model, interface)
-    cfg = ctrl.get_controller_config()
-    base_ts = ctrl.get_timestamp() + cfg.default_preview_time
-    eef_state = ctrl.get_eef_state()
-    return ctrl, base_ts, eef_state
+# def arm_time_and_state(model: str = "X5", interface: str = "can0"):
+#     ctrl = init_arm_controller(model, interface)
+#     cfg = ctrl.get_controller_config()
+#     base_ts = ctrl.get_timestamp() + cfg.default_preview_time
+#     eef_state = ctrl.get_eef_state()
+#     return ctrl, base_ts, eef_state
 
-def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
-    cmd = EEFState()
-    cmd.pose_6d()[:] = pose
-    cmd.gripper_pos = grip
-    cmd.timestamp = timestamp
-    return cmd
+# def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
+#     cmd = EEFState()
+#     cmd.pose_6d()[:] = pose
+#     cmd.gripper_pos = grip
+#     cmd.timestamp = timestamp
+#     return cmd
 
-# --------------------------- 小工具：初始化 ---------------------------
-def init_yolo(root_dir: str):
-    """初始化 YOLO 模型（若不可用则返回 None）。"""
-    yolo_model = None
-    params = None
-    try:
-        if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
-            weights = os.path.join(root_dir, 'yolo11', 'best.pt')
-            yolo_model = gp.YOLO(weights)
-            # 初始不限制类别，由 get_best_mask 动态控制
-            params = {"conf": 0.4, "iou": 0.7}
-    except Exception as e:
-        print(f"[Warn] YOLO init failed: {e}")
-        yolo_model, params = None, None
-    return yolo_model, params
+# # --------------------------- 小工具：初始化 ---------------------------
+# def init_yolo(root_dir: str):
+#     """初始化 YOLO 模型（若不可用则返回 None）。"""
+#     yolo_model = None
+#     params = None
+#     try:
+#         if getattr(gp, "_HAS_YOLO", False) and getattr(gp, "YOLO", None) is not None:
+#             weights = os.path.join(root_dir, 'yolo11', 'best.pt')
+#             yolo_model = gp.YOLO(weights)
+#             # 初始不限制类别，由 get_best_mask 动态控制
+#             params = {"conf": 0.4, "iou": 0.7}
+#     except Exception as e:
+#         print(f"[Warn] YOLO init failed: {e}")
+#         yolo_model, params = None, None
+#     return yolo_model, params
 
 
-def get_best_mask(yolo_model, color, params, locked_class_id):
-    """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
-    run_params = params.copy()
-    # 若已锁定，只检测该类别
-    if locked_class_id is not None:
-        run_params['classes'] = [locked_class_id]
+# def get_best_mask(yolo_model, color, params, locked_class_id):
+#     """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
+#     run_params = params.copy()
+#     # 若已锁定，只检测该类别
+#     if locked_class_id is not None:
+#         run_params['classes'] = [locked_class_id]
     
-    results = yolo_model.predict(color, **run_params, verbose=False)
-    if not results or results[0].boxes is None or len(results[0].boxes) == 0:
-        return None, None, locked_class_id
+#     results = yolo_model.predict(color, **run_params, verbose=False)
+#     if not results or results[0].boxes is None or len(results[0].boxes) == 0:
+#         return None, None, locked_class_id
 
-    r = results[0]
-    # 找置信度最高的索引
-    best_idx = int(r.boxes.conf.argmax().item())
-    best_class = int(r.boxes.cls[best_idx].item())
+#     r = results[0]
+#     # 找置信度最高的索引
+#     best_idx = int(r.boxes.conf.argmax().item())
+#     best_class = int(r.boxes.cls[best_idx].item())
 
-    # 首次锁定
-    if locked_class_id is None:
-        locked_class_id = best_class
-        name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
-        print(f"[Info] 锁定目标类别: {name} (ID: {best_class})")
+#     # 首次锁定
+#     if locked_class_id is None:
+#         locked_class_id = best_class
+#         name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
+#         print(f"[Info] 锁定目标类别: {name} (ID: {best_class})")
 
-    # 生成掩码 (仅使用Box)
-    mask = np.zeros(color.shape[:2], dtype=np.uint8)
-    box = r.boxes.xyxy[best_idx].detach().cpu().numpy().astype(int)
-    x1, y1, x2, y2 = box
-    # Clip to image bounds
-    x1, x2 = np.clip([x1, x2], 0, color.shape[1])
-    y1, y2 = np.clip([y1, y2], 0, color.shape[0])
-    mask[y1:y2, x1:x2] = 255
+#     # 生成掩码 (仅使用Box)
+#     mask = np.zeros(color.shape[:2], dtype=np.uint8)
+#     box = r.boxes.xyxy[best_idx].detach().cpu().numpy().astype(int)
+#     x1, y1, x2, y2 = box
+#     # Clip to image bounds
+#     x1, x2 = np.clip([x1, x2], 0, color.shape[1])
+#     y1, y2 = np.clip([y1, y2], 0, color.shape[0])
+#     mask[y1:y2, x1:x2] = 255
 
-    return mask, r.plot(), locked_class_id
-
-
-def init_realsense(color_w: int = 640, color_h: int = 480):
-    """初始化 RealSense（颜色/深度对齐到彩色），返回 (pipeline, align)。"""
-    pipeline = rs.pipeline()
-    config = rs.config()
-    config.enable_stream(rs.stream.color, color_w, color_h, rs.format.bgr8, 30)
-    config.enable_stream(rs.stream.depth, color_w, color_h, rs.format.z16, 30)
-    align = rs.align(rs.stream.color)
-    pipeline.start(config)
-
-    return pipeline, align
+#     return mask, r.plot(), locked_class_id
 
 
-def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
-    """构造相机内参（与 grasp_process.py main 中保持一致，默认 L515 内参）。"""
-    # L515
-    # intrinsic = np.array(
-    #     [[607.451721, 0.0, 329.049744],
-    #      [0.0, 607.656555, 248.114029],
-    #      [0.0, 0.0, 1.0]], dtype=np.float32
-    # )
-    # factor_depth = float(3999.999810)
-    # D435i
-    intrinsic = np.array([[606.44, 0.0, 322.35], [0.0, 606.48, 239.54], [0.0, 0.0, 1.0]], dtype=np.float32)
-    factor_depth = float(999.999952502551)
-    return gp.CameraInfo(float(color_w), float(color_h),
-                         intrinsic[0][0], intrinsic[1][1], intrinsic[0][2], intrinsic[1][2],
-                         factor_depth)
+# def init_realsense(color_w: int = 640, color_h: int = 480):
+#     """初始化 RealSense（颜色/深度对齐到彩色），返回 (pipeline, align)。"""
+#     pipeline = rs.pipeline()
+#     config = rs.config()
+#     config.enable_stream(rs.stream.color, color_w, color_h, rs.format.bgr8, 30)
+#     config.enable_stream(rs.stream.depth, color_w, color_h, rs.format.z16, 30)
+#     align = rs.align(rs.stream.color)
+#     pipeline.start(config)
+
+#     return pipeline, align
 
 
-def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
+# def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
+#     """构造相机内参（与 grasp_process.py main 中保持一致，默认 L515 内参）。"""
+#     # L515
+#     # intrinsic = np.array(
+#     #     [[607.451721, 0.0, 329.049744],
+#     #      [0.0, 607.656555, 248.114029],
+#     #      [0.0, 0.0, 1.0]], dtype=np.float32
+#     # )
+#     # factor_depth = float(3999.999810)
+#     # D435i
+#     intrinsic = np.array([[606.44, 0.0, 322.35], [0.0, 606.48, 239.54], [0.0, 0.0, 1.0]], dtype=np.float32)
+#     factor_depth = float(999.999952502551)
+#     return gp.CameraInfo(float(color_w), float(color_h),
+#                          intrinsic[0][0], intrinsic[1][1], intrinsic[0][2], intrinsic[1][2],
+#                          factor_depth)
+
+
+# def grasp_control_step0(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
-    #打印位姿信息
-    np.set_printoptions(precision=5, suppress=True)
-    print(f"grasp_translation (m):\n{grasp_translation}")
-    print(f"grasp_rotation_matrix:\n{grasp_rotation}")
-    print(f"width (m): {width:.5f}")
+#     #打印位姿信息
+#     np.set_printoptions(precision=5, suppress=True)
+#     print(f"grasp_translation (m):\n{grasp_translation}")
+#     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
+#     print(f"width (m): {width:.5f}")
 
-    # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
-    base_pose, _ = convert_new(
-        grasp_translation,
-        grasp_rotation,
-        current_pose,
-        handeye_rotation,
-        handeye_translation,
-        gripper_length=0.03,
-    )
+#     # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
+#     base_pose, _ = convert_new(
+#         grasp_translation,
+#         grasp_rotation,
+#         current_pose,
+#         handeye_rotation,
+#         handeye_translation,
+#         gripper_length=0.03,
+#     )
 
-    # 正式执行部分
-    base_pose_np = np.array(base_pose, dtype=float)
-    base_xyz = base_pose_np[:3]
-    base_rxyz = base_pose_np[3:]
+#     # 正式执行部分
+#     base_pose_np = np.array(base_pose, dtype=float)
+#     base_xyz = base_pose_np[:3]
+#     base_rxyz = base_pose_np[3:]
 
-    # 预抓取计算01：
-    pre_grasp_pose_01 = base_pose_np.copy()
-    pre_grasp_pose_01[0] -= 0.16  # x 值减去 0.16m
-    pre_grasp_pose_01[2] += 0.14  # z 值增加 0.14m
-    pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
+#     # 预抓取计算01：
+#     pre_grasp_pose_01 = base_pose_np.copy()
+#     pre_grasp_pose_01[0] -= 0.16  # x 值减去 0.16m
+#     pre_grasp_pose_01[2] += 0.14  # z 值增加 0.14m
+#     pre_grasp_pose_01[3:] = [0., 0.8, 0.]  # rx, ry, rz
 
-    controller, now, eef_state = arm_time_and_state()
-    grip_now = eef_state.gripper_pos
+#     controller, now, eef_state = arm_time_and_state()
+#     grip_now = eef_state.gripper_pos
 
-    controller.set_eef_traj([
-        build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(pre_grasp_pose_01, grip_now, now + 2.0),
-    ])
-def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
+#     controller.set_eef_traj([
+#         build_eef_cmd(current_pose, grip_now, now),
+#         build_eef_cmd(pre_grasp_pose_01, grip_now, now + 2.0),
+#     ])
+# def grasp_control_step1(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
     
-    #打印位姿信息
-    np.set_printoptions(precision=5, suppress=True)
-    print(f"grasp_translation (m):\n{grasp_translation}")
-    print(f"grasp_rotation_matrix:\n{grasp_rotation}")
-    print(f"width (m): {width:.5f}")
+#     #打印位姿信息
+#     np.set_printoptions(precision=5, suppress=True)
+#     print(f"grasp_translation (m):\n{grasp_translation}")
+#     print(f"grasp_rotation_matrix:\n{grasp_rotation}")
+#     print(f"width (m): {width:.5f}")
 
-    # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
-    base_pose, _ = convert_new(
-        grasp_translation,
-        grasp_rotation,
-        current_pose,
-        handeye_rotation,
-        handeye_translation,
-        gripper_length=0.03,
-    )
-    print("[DEBUG] 基坐标系抓取位姿:", base_pose)
+#     # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
+#     base_pose, _ = convert_new(
+#         grasp_translation,
+#         grasp_rotation,
+#         current_pose,
+#         handeye_rotation,
+#         handeye_translation,
+#         gripper_length=0.03,
+#     )
+#     print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
-    # 正式执行部分
-    base_pose_np = np.array(base_pose, dtype=float)
-    base_xyz = base_pose_np[:3]
-    base_rxyz = base_pose_np[3:]
+#     # 正式执行部分
+#     base_pose_np = np.array(base_pose, dtype=float)
+#     base_xyz = base_pose_np[:3]
+#     base_rxyz = base_pose_np[3:]
 
 
-    controller, now, eef_state = arm_time_and_state()
-    grip_now = eef_state.gripper_pos
-    grip_target = max(0.0, float(width - 0.05))
-    pre_base_pose_np = base_pose_np.copy()
-    pre_base_pose_np[2] += 0.02  # 提前 2 cm 避免碰撞
-    lift_pose = base_pose_np.copy()
-    lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
+#     controller, now, eef_state = arm_time_and_state()
+#     grip_now = eef_state.gripper_pos
+#     grip_target = max(0.0, float(width - 0.05))
+#     pre_base_pose_np = base_pose_np.copy()
+#     pre_base_pose_np[2] += 0.02  # 提前 2 cm 避免碰撞
+#     lift_pose = base_pose_np.copy()
+#     lift_pose[2] += 0.1  # raise 10 cm after the grasp closes
 
-    # 最终位置：回到关节复位状态的EEF位姿，夹爪保持grip_target）
-    final_pose = np.array([ 0.2402, 0.001, 0.1565, -0., 0.,  0. ], dtype=float)
+#     # 最终位置：回到关节复位状态的EEF位姿，夹爪保持grip_target）
+#     final_pose = np.array([ 0.2402, 0.001, 0.1565, -0., 0.,  0. ], dtype=float)
 
-    controller.set_eef_traj([
-        build_eef_cmd(current_pose, grip_now, now),
-        build_eef_cmd(pre_base_pose_np, grip_now, now + 3.0),
-        build_eef_cmd(base_pose_np, grip_now, now + 4.0),
-        build_eef_cmd(base_pose_np, grip_target, now + 5.0),
-        build_eef_cmd(lift_pose, grip_target, now + 6.0),
-        build_eef_cmd(final_pose, grip_target, now + 10.0),
+#     controller.set_eef_traj([
+#         build_eef_cmd(current_pose, grip_now, now),
+#         build_eef_cmd(pre_base_pose_np, grip_now, now + 3.0),
+#         build_eef_cmd(base_pose_np, grip_now, now + 4.0),
+#         build_eef_cmd(base_pose_np, grip_target, now + 5.0),
+#         build_eef_cmd(lift_pose, grip_target, now + 6.0),
+#         build_eef_cmd(final_pose, grip_target, now + 10.0),
         
-    ])
+#     ])
 
 
-# --------------------------- 主循环（精炼） ---------------------------
-def capture_frame(pipeline: Any, align: Any, timeout_ms: int = 10000) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-    """Grab a synchronized color/depth frame pair from the RealSense pipeline.
-    超时或偶发异常时返回 (None, None) 而不是抛出，让上层继续循环，避免程序退出导致机械臂进入阻尼。
-    """
-    try:
-        frames = pipeline.wait_for_frames(timeout_ms)
-        if not frames:
-            return None, None
-        aligned = align.process(frames)
-        color_frame = aligned.get_color_frame()
-        depth_frame = aligned.get_depth_frame()
-        if not color_frame or not depth_frame:
-            return None, None
-        color = np.asanyarray(color_frame.get_data())
-        depth = np.asanyarray(depth_frame.get_data())
-        return color, depth
-    except Exception:
-        # 取帧超时或摄像头临时不可用，返回空让主循环继续
-        return None, None
+# # --------------------------- 主循环（精炼） ---------------------------
+# def capture_frame(pipeline: Any, align: Any, timeout_ms: int = 10000) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+#     """Grab a synchronized color/depth frame pair from the RealSense pipeline.
+#     超时或偶发异常时返回 (None, None) 而不是抛出，让上层继续循环，避免程序退出导致机械臂进入阻尼。
+#     """
+#     try:
+#         frames = pipeline.wait_for_frames(timeout_ms)
+#         if not frames:
+#             return None, None
+#         aligned = align.process(frames)
+#         color_frame = aligned.get_color_frame()
+#         depth_frame = aligned.get_depth_frame()
+#         if not color_frame or not depth_frame:
+#             return None, None
+#         color = np.asanyarray(color_frame.get_data())
+#         depth = np.asanyarray(depth_frame.get_data())
+#         return color, depth
+#     except Exception:
+#         # 取帧超时或摄像头临时不可用，返回空让主循环继续
+#         return None, None
 
 
-def short_loop(args):
-    """主流程：初始化 -> 循环处理 -> 窗口与键盘交互。"""
-    # 模型
-    net, device = gp.get_net(args.checkpoint_path, args.num_view)
+# def short_loop(args):
+#     """主流程：初始化 -> 循环处理 -> 窗口与键盘交互。"""
+#     # 模型
+#     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
-    # YOLO
-    yolo_model, yolo_params = init_yolo(gp.ROOT_DIR)
-    if yolo_model is None:
-        print('[Info] YOLO not available; skipping segmentation.')
+#     # YOLO
+#     yolo_model, yolo_params = init_yolo(gp.ROOT_DIR)
+#     if yolo_model is None:
+#         print('[Info] YOLO not available; skipping segmentation.')
 
-    # 可视化
-    # vis, pcd, T = init_vis()
-    pcd = o3d.geometry.PointCloud()
-    # gripper_geoms = []
-    last_grasp_info = None
-    seg_vis = None
-    locked_class_id = None  # 锁定目标类别ID
+#     # 可视化
+#     # vis, pcd, T = init_vis()
+#     pcd = o3d.geometry.PointCloud()
+#     # gripper_geoms = []
+#     last_grasp_info = None
+#     seg_vis = None
+#     locked_class_id = None  # 锁定目标类别ID
 
-    # arm_init
-    controller = init_arm_controller()
-    controller.reset_to_home()
-    # 预抓取位姿
-    # prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
-    #竖直向下
-    # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
-    #斜向下
-    prep_pose = np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float)
-    _, start_ts, eef_state = arm_time_and_state()
-    grip_home = eef_state.gripper_pos
-    grip_max = controller.get_robot_config().gripper_width
+#     # arm_init
+#     controller = init_arm_controller()
+#     controller.reset_to_home()
+#     # 预抓取位姿
+#     # prep_pose = np.array([ 0.1522 ,0.001 , 0.2205 , -0. , 1.07 , 0. ], dtype=float)
+#     #竖直向下
+#     # prep_pose = np.array([ 0.2442, 0.001 , 0.2365 ,-0. , 1.35 , 0. ], dtype=float)
+#     #斜向下
+#     prep_pose = np.array([ 0.1602, 0.001, 0.2645, -0., 0.62, 0. ], dtype=float)
+#     _, start_ts, eef_state = arm_time_and_state()
+#     grip_home = eef_state.gripper_pos
+#     grip_max = controller.get_robot_config().gripper_width
 
-    controller.set_eef_traj([
-        build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-        build_eef_cmd(prep_pose, grip_home, start_ts + 3.0),
-        build_eef_cmd(prep_pose, grip_max, start_ts + 5.0),
-    ])
+#     controller.set_eef_traj([
+#         build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
+#         build_eef_cmd(prep_pose, grip_home, start_ts + 3.0),
+#         build_eef_cmd(prep_pose, grip_max, start_ts + 5.0),
+#     ])
 
-    # RealSense + 相机内参
-    color_w, color_h = 640, 480
-    camera_info = make_camera_info(color_w, color_h)
-    pipeline, align = init_realsense(color_w, color_h)
-
-
-    try:
-        while True:
-            color, depth = capture_frame(pipeline, align)
-            if color is None or depth is None:
-                print("[Warn] 未能获取相机帧，跳过本次循环。")
-                continue
-
-            cv2.imshow('Color (raw)', color)
-            depth_colormap = gp.depth_to_colormap(depth)
-            if depth_colormap is not None:
-                cv2.imshow('Depth (aligned)', depth_colormap)
-            if seg_vis is not None:
-                cv2.imshow('YOLO Segmentation', seg_vis)
-
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                break
-            elif key == ord(' '):
-                print("[Safety] Returning arm to home pose.")
-                controller.reset_to_home()
-            elif key == ord('t'):
-                if yolo_model is not None:
-                    workspace_mask, seg_vis_candidate, locked_class_id = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id)
-                    seg_vis = seg_vis_candidate
-                else:
-                    workspace_mask = np.where(depth > 0, 255, 0).astype(np.uint8)
-                    seg_vis = None
-
-                if workspace_mask is None:
-                    print('[Info] YOLO 未检测到目标，跳过抓取生成。')
-                    last_grasp_info = None
-                else:
-                    _, _, eef_state = arm_time_and_state()
-                    current_pose_ = eef_state.pose_6d().copy()
-                    last_grasp_info = gp.run_graspnet_for_mask(
-                        net, device, color, depth, camera_info, args, pcd, T_o3d, workspace_mask,
-                        current_pose_, np.array(handeye_rotation, dtype=float), np.array(handeye_translation, dtype=float)
-                    )
-            elif key == ord('z'):
-                print("\n===== Current Grasp (camera frame) =====")
-                if last_grasp_info is not None:
-                    grasp_translation = last_grasp_info['translation']
-                    grasp_rotation = last_grasp_info['rotation_matrix']
-                    grasp_width = last_grasp_info['width']
-                    current_pose = eef_state.pose_6d().copy()
-                    grasp_control_step0(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
-                    time.sleep(5)
-                    print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
-
-                else:
-                    print("No grasp available yet.")
-            elif key == ord('x'):
-                print("\n===== Current Grasp (camera frame) =====")
-                if last_grasp_info is not None:
-                    grasp_translation = last_grasp_info['translation']
-                    grasp_rotation = last_grasp_info['rotation_matrix']
-                    grasp_width = last_grasp_info['width']
-                    current_pose = eef_state.pose_6d().copy()
-                    grasp_control_step1(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
-                    time.sleep(20)
-                    print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
-
-                else:
-                    print("No grasp available yet.")
-
-    finally:
-        pipeline.stop()
-        cv2.destroyAllWindows()
+#     # RealSense + 相机内参
+#     color_w, color_h = 640, 480
+#     camera_info = make_camera_info(color_w, color_h)
+#     pipeline, align = init_realsense(color_w, color_h)
 
 
-# --------------------------- 入口 ---------------------------
-def main():
-    # 直接复用 grasp_process 的参数解析；若未提供则注入默认 checkpoint 路径
-    ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    default_ckpt = os.path.join(ROOT_DIR, 'python', 'graspnet', 'checkpoint', 'checkpoint-rs.tar')
-    if '--checkpoint_path' not in sys.argv:
-        sys.argv += ['--checkpoint_path', default_ckpt]
-    args = gp.parse_args()
-    short_loop(args)
+#     try:
+#         while True:
+#             color, depth = capture_frame(pipeline, align)
+#             if color is None or depth is None:
+#                 print("[Warn] 未能获取相机帧，跳过本次循环。")
+#                 continue
+
+#             cv2.imshow('Color (raw)', color)
+#             depth_colormap = gp.depth_to_colormap(depth)
+#             if depth_colormap is not None:
+#                 cv2.imshow('Depth (aligned)', depth_colormap)
+#             if seg_vis is not None:
+#                 cv2.imshow('YOLO Segmentation', seg_vis)
+
+#             key = cv2.waitKey(1) & 0xFF
+#             if key == ord('q'):
+#                 break
+#             elif key == ord(' '):
+#                 print("[Safety] Returning arm to home pose.")
+#                 controller.reset_to_home()
+#             elif key == ord('t'):
+#                 if yolo_model is not None:
+#                     workspace_mask, seg_vis_candidate, locked_class_id = gp.yolo_get_mask(yolo_model, color, yolo_params, locked_class_id)
+#                     seg_vis = seg_vis_candidate
+#                 else:
+#                     workspace_mask = np.where(depth > 0, 255, 0).astype(np.uint8)
+#                     seg_vis = None
+
+#                 if workspace_mask is None:
+#                     print('[Info] YOLO 未检测到目标，跳过抓取生成。')
+#                     last_grasp_info = None
+#                 else:
+#                     _, _, eef_state = arm_time_and_state()
+#                     current_pose_ = eef_state.pose_6d().copy()
+#                     last_grasp_info = gp.run_graspnet_for_mask(
+#                         net, device, color, depth, camera_info, args, pcd, T_o3d, workspace_mask,
+#                         current_pose_, np.array(handeye_rotation, dtype=float), np.array(handeye_translation, dtype=float)
+#                     )
+#             elif key == ord('z'):
+#                 print("\n===== Current Grasp (camera frame) =====")
+#                 if last_grasp_info is not None:
+#                     grasp_translation = last_grasp_info['translation']
+#                     grasp_rotation = last_grasp_info['rotation_matrix']
+#                     grasp_width = last_grasp_info['width']
+#                     current_pose = eef_state.pose_6d().copy()
+#                     grasp_control_step0(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
+#                     time.sleep(5)
+#                     print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
+
+#                 else:
+#                     print("No grasp available yet.")
+#             elif key == ord('x'):
+#                 print("\n===== Current Grasp (camera frame) =====")
+#                 if last_grasp_info is not None:
+#                     grasp_translation = last_grasp_info['translation']
+#                     grasp_rotation = last_grasp_info['rotation_matrix']
+#                     grasp_width = last_grasp_info['width']
+#                     current_pose = eef_state.pose_6d().copy()
+#                     grasp_control_step1(grasp_translation, grasp_rotation, grasp_width, current_pose, handeye_rotation, handeye_translation)
+#                     time.sleep(20)
+#                     print('当前末端执行器位姿:', controller.get_eef_state().pose_6d())
+
+#                 else:
+#                     print("No grasp available yet.")
+
+#     finally:
+#         pipeline.stop()
+#         cv2.destroyAllWindows()
 
 
-if __name__ == '__main__':
-    main()
+# # --------------------------- 入口 ---------------------------
+# def main():
+#     # 直接复用 grasp_process 的参数解析；若未提供则注入默认 checkpoint 路径
+#     ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#     default_ckpt = os.path.join(ROOT_DIR, 'python', 'graspnet', 'checkpoint', 'checkpoint-rs.tar')
+#     if '--checkpoint_path' not in sys.argv:
+#         sys.argv += ['--checkpoint_path', default_ckpt]
+#     args = gp.parse_args()
+#     short_loop(args)
+
+
+# if __name__ == '__main__':
+#     main()

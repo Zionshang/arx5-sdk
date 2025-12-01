@@ -12,7 +12,7 @@ import numpy as np
 import pyrealsense2 as rs
 import re
 
-OUTPUT_DIR = "/home/zishang/python-ws/yolo_data/jpg_images"
+OUTPUT_DIR = "/home/jyx/python_ws/Dataset-Conversion/data/jpg_images"
 COLOR_WIDTH = 640
 COLOR_HEIGHT = 480
 FPS = 30

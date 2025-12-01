@@ -127,7 +127,7 @@ def main():
             
             # Check 'here' condition
             if (dist < 0.75 and 
-                0 < target_pos[0] < 0.7 and 
+                -0.1 < target_pos[0] < 0.7 and 
                 -0.55 < target_pos[1] < 0.55 and 
                 0 < target_pos[2] < 0.4):
                 here = True
