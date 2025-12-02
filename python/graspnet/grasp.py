@@ -321,6 +321,9 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         handeye_translation
     )
     time.sleep(11)
+    # 查询抓取完毕后的机械臂末端夹爪的 torque
+    _, _, eef_state = arm_time_and_state()
+    print(f"[Info] Gripper torque after grasp: {eef_state.gripper_torque}")
 
     if SAVE_VISUALIZATION:
         print("[Info] Capturing post-grasp image...")
@@ -329,7 +332,6 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
             timestamp = int(time.time())
             save_path = os.path.join(VIS_SAVE_DIR, f'post_grasp_{timestamp}.jpg')
             cv2.imwrite(save_path, color)
-            print(f"[Info] Saved post-grasp image to {save_path}")
 
     return best_grasp
 
