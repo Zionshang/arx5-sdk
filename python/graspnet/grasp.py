@@ -184,10 +184,10 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         ])
     else:
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.20,
+            target_pos[0] - 0.25,
             target_pos[1],
             target_pos[2] + 0.13,
-            0.0, 0.65, 0.0
+            0.0, 0.6, 0.0
         ])
     
     print(f"Executing pre-grasp pose: {pre_grasp_pose}")
@@ -251,7 +251,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     grasp_candidates = []
     attempts = 0
 
-    while len(grasp_candidates) < 5:
+    while len(grasp_candidates) < 3:
         attempts += 1
         if attempts > 40:
             print("[Warn] Max attempts (40) reached without enough grasp candidates.")
@@ -378,9 +378,9 @@ def short_loop(args):
 
     # 预抓取位姿确定
     prep_poses = [
-        np.array([ 0.16, 0.0, 0.2645, -0., 0.62, 0. ], dtype=float),
-        np.array([ 0.16, -0.13, 0.27, 0.0032, 0.5964, -0.76], dtype=float),
-        np.array([ 0.16, 0.13, 0.27, 0.0032, 0.5964, 0.76], dtype=float),
+        np.array([ 0.16, 0.0, 0.3, -0., 0.62, 0. ], dtype=float),
+        np.array([ 0.16, -0.13, 0.3, 0.0032, 0.5964, -0.76], dtype=float),
+        np.array([ 0.16, 0.13, 0.3, 0.0032, 0.5964, 0.76], dtype=float),
     ]
     grasp_class_ = None
     found_target = False
