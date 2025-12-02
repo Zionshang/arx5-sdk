@@ -2,7 +2,7 @@ import os
 import sys
 import time
 import numpy as np
-from pynput import keyboard
+# from pynput import keyboard
 
 # Ensure compiled module under ../python is discoverable before importing it
 CUR_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -20,27 +20,12 @@ if ROOT_DIR not in sys.path:
 # Import grasp.py functionality
 import grasp
 import grasp_process as gp
+import lcm
+import struct
 
-# Track key press states (pynput doesn't expose is_pressed)
-KEY_STATE = {'z': False, 'f': False, 'q': False}
-
-
-def _on_press(key):
-    try:
-        k = key.char.lower() if key.char else None
-    except AttributeError:
-        k = None
-    if k in KEY_STATE:
-        KEY_STATE[k] = True
-
-
-def _on_release(key):
-    try:
-        k = key.char.lower() if key.char else None
-    except AttributeError:
-        k = None
-    if k in KEY_STATE:
-        KEY_STATE[k] = False
+# Global state
+last_obj_id = -1
+lc = lcm.LCM()
 
 def release_and_home(controller):
     print("[Info] Executing Release and Home sequence...")
@@ -77,11 +62,16 @@ def release_and_home(controller):
     controller.reset_to_home()
     time.sleep(3.5)
 
+def send_status(status, obj_id):
+    # status: 0=Success, 1=Fail
+    # obj_id: YOLO class ID
+    msg = struct.pack("ii", status, obj_id)
+    lc.publish("ARM_STATUS", msg)
+    print(f"[LCM] Sent Status: {status}, ID: {obj_id}")
+
 def main():
-    print("=== Task 1 Full Workflow ===")
+    print("=== Task 1 Full Workflow (LCM Control) ===")
     # Mock args for grasp.short_loop
-    # 直接复用 grasp_process 的参数解析；若未提供则注入默认 checkpoint 路径
-    # ckpt 位于 .../python/graspnet/checkpoint
     default_ckpt = os.path.join(PY_ROOT, 'graspnet', 'checkpoint', 'checkpoint-rs.tar')
     if '--checkpoint_path' not in sys.argv:
         sys.argv += ['--checkpoint_path', default_ckpt]
@@ -90,41 +80,45 @@ def main():
     # Initialize controller once
     controller = grasp.init_arm_controller()
 
-    listener = keyboard.Listener(on_press=_on_press, on_release=_on_release)
-    listener.start()
-    try:
-        while True:
-            if KEY_STATE['z']:
-                print("\n>>> 'z' pressed: Starting Grasp Sequence...")
+    def on_command(channel, data):
+        global last_obj_id
+        try:
+            cmd = struct.unpack("i", data)[0]
+            print(f"\n>>> Received LCM Command: {cmd}")
+            
+            if cmd == 0: # Grasp
                 try:
-                    grasp.short_loop(args)
+                    obj_id = grasp.short_loop(args)
+                    if obj_id is not None and obj_id >= 0:
+                        last_obj_id = obj_id
+                        send_status(0, obj_id)
+                    else:
+                        raise Exception("Grasp returned failure code")
                 except Exception as e:
-                    print(f"[Error] Grasp sequence failed: {e}")
-                
-                KEY_STATE['z'] = False  # avoid multiple triggers
-                print(">>> Grasp Sequence Finished. Waiting for command...")
+                    print(f"[Error] Grasp failed: {e}")
+                    controller.reset_to_home()
+                    send_status(1, -1)
 
-            elif KEY_STATE['f']:
-                print("\n>>> 'f' pressed: Releasing and Homing...")
+            elif cmd == 1: # Place
                 try:
                     release_and_home(controller)
+                    send_status(0, last_obj_id)
                 except Exception as e:
-                    print(f"[Error] Release sequence failed: {e}")
-                
-                KEY_STATE['f'] = False
-                print(">>> Release Finished. Waiting for command...")
+                    print(f"[Error] Place failed: {e}")
+                    controller.reset_to_home()
+                    send_status(1, last_obj_id)
+                    
+        except Exception as e:
+            print(f"[LCM Error] {e}")
 
-            elif KEY_STATE['q']:
-                print("\n>>> Quitting...")
-                break
-            
-            time.sleep(0.05)
-    finally:
-        listener.stop()
+    lc.subscribe("ARM_CMD", on_command)
+    print("Waiting for LCM commands on channel 'ARM_CMD'...")
+    
+    try:
+        while True:
+            lc.handle()
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
-    # Ensure root privileges for keyboard and can0 if needed
-    if os.geteuid() != 0:
-        print("Warning: This script might need sudo for keyboard/CAN access.")
-    
     main()

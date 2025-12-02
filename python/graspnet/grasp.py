@@ -405,7 +405,7 @@ def short_loop(args):
         time.sleep(3.5)
         
         # YOLO 检测
-        for _ in range(15):
+        for _ in range(20):
             frames = pipeline.wait_for_frames()
             aligned = align.process(frames)
             color_frame = aligned.get_color_frame()
@@ -425,11 +425,18 @@ def short_loop(args):
         controller.reset_to_home()
         time.sleep(3.5)
         pipeline.stop()
-        return
+        return -1
 
     try:
         grasp_class = grasp_class_
-        print(f"[Info] Detected target class: {grasp_class}")
+        cls_id = -1
+        if hasattr(yolo_model, 'names'):
+            for k, v in yolo_model.names.items():
+                if v == grasp_class:
+                    cls_id = k
+                    break
+        
+        print(f"[Info] Detected target class: {grasp_class} (ID: {cls_id})")
         _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
         pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)
@@ -438,7 +445,7 @@ def short_loop(args):
             print('[Warn] 未能生成有效的预抓取，终止流程。')
             controller.reset_to_home()
             time.sleep(3.5)
-            return
+            return -1
 
         print('[Info] Collecting final grasp candidates...')
         final_grasp = acquire_and_execute_final_grasp(
@@ -448,7 +455,9 @@ def short_loop(args):
             print('[Warn] 未能生成有效的最终抓取，复位机械臂。')
             controller.reset_to_home()
             time.sleep(3.5)
-            return
+            return -1
+            
+        return cls_id
     finally:
         # pipeline.stop()
         cv2.destroyAllWindows()
