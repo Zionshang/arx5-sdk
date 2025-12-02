@@ -93,7 +93,7 @@ def main():
             current_state = controller.get_eef_state()
             
             print(f"[Info] Scanning at Position {i}...")
-            target_pos, obs_class = get_target_position(pipeline, align, yolo_model, current_state)
+            target_pos, obs_class,_= get_target_position(pipeline, align, yolo_model, current_state)
             
             if target_pos is not None:
                 found_idx = i

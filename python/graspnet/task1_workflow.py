@@ -88,12 +88,20 @@ def main():
             
             if cmd == 0: # Grasp
                 try:
-                    obj_id = grasp.short_loop(args)
-                    if obj_id is not None and obj_id >= 0:
-                        last_obj_id = obj_id
-                        send_status(0, obj_id)
+                    obj_id, result, here = grasp.short_loop(args)
+                    if not here:
+                        print("[Info] Target too far or not found (here=False)")
+                        send_status(-1, obj_id)
+                    elif not result:
+                        print("[Info] Grasp failed (result=False)")
+                        if obj_id is not None and obj_id >= 0:
+                            last_obj_id = obj_id
+                        send_status(1, last_obj_id)
                     else:
-                        raise Exception("Grasp returned failure code")
+                        print("[Info] Grasp success")
+                        if obj_id is not None and obj_id >= 0:
+                            last_obj_id = obj_id
+                        send_status(0, last_obj_id)
                 except Exception as e:
                     print(f"[Error] Grasp failed: {e}")
                     controller.reset_to_home()

@@ -167,12 +167,12 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
 
 def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class=None):
     # 获取目标位置
-    target_pos, _ = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
+    target_pos,_,class_id = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
     # 范围判断: x[-0.1-0.7], y[-0.55-0.55], z[0-0.35]
     if not (target_pos is not None and -0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and 0 < target_pos[2] < 0.35):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
-        return None
+        return None, class_id
 
     # 计算预抓取位姿
     if target_pos[2] < 0.10:
@@ -242,7 +242,7 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     #     print(f"[Info] Best roll found: {best_roll:.3f} rad")
     
     # 返回一个 dummy grasp info 以满足 short_loop 的检查
-    return {'translation': target_pos}
+    return {'translation': target_pos}, class_id
 
 
 def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class=None):
@@ -251,11 +251,11 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     grasp_candidates = []
     attempts = 0
 
-    while len(grasp_candidates) < 3:
+    while len(grasp_candidates) < 4:
         attempts += 1
         if attempts > 40:
             print("[Warn] Max attempts (40) reached without enough grasp candidates.")
-            return None
+            return None, 0.0
 
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
@@ -324,6 +324,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     # 查询抓取完毕后的机械臂末端夹爪的 torque
     _, _, eef_state = arm_time_and_state()
     print(f"[Info] Gripper torque after grasp: {eef_state.gripper_torque}")
+    gripper_torque = eef_state.gripper_torque
 
     if SAVE_VISUALIZATION:
         print("[Info] Capturing post-grasp image...")
@@ -333,7 +334,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
             save_path = os.path.join(VIS_SAVE_DIR, f'post_grasp_{timestamp}.jpg')
             cv2.imwrite(save_path, color)
 
-    return best_grasp
+    return best_grasp,gripper_torque
 
 
 # --------------------------- 主循环（精炼） ---------------------------
@@ -427,7 +428,7 @@ def short_loop(args):
         controller.reset_to_home()
         time.sleep(3.5)
         pipeline.stop()
-        return -1
+        return -1, False, False
 
     try:
         grasp_class = grasp_class_
@@ -441,25 +442,30 @@ def short_loop(args):
         print(f"[Info] Detected target class: {grasp_class} (ID: {cls_id})")
         _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
-        pre_grasp_info = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)
+        pre_grasp_info, class_id = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)
         
         if pre_grasp_info is None:
             print('[Warn] 未能生成有效的预抓取，终止流程。')
             controller.reset_to_home()
             time.sleep(3.5)
-            return -1
+            cid = class_id if class_id is not None else cls_id
+            return cid, False, False
 
         print('[Info] Collecting final grasp candidates...')
-        final_grasp = acquire_and_execute_final_grasp(
+        final_grasp, gripper_torque = acquire_and_execute_final_grasp(
             net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class
         )
+        
+        here = True
+        result = False
         if final_grasp is None:
             print('[Warn] 未能生成有效的最终抓取，复位机械臂。')
             controller.reset_to_home()
             time.sleep(3.5)
-            return -1
+        elif abs(gripper_torque) > 0.35:
+            result = True
             
-        return cls_id
+        return cls_id, result, here
     finally:
         # pipeline.stop()
         cv2.destroyAllWindows()

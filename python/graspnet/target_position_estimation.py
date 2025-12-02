@@ -122,8 +122,15 @@ def get_target_position(pipeline=None, align=None, yolo_model=None,current_state
     else:
         print("No target detected after 20 attempts.")
 
-    return target_pos_base, detected_class
+    class_id = None
+    if detected_class and yolo_model:
+        for k, v in yolo_model.names.items():
+            if v == detected_class:
+                class_id = k
+                break
+
+    return target_pos_base, detected_class, class_id
 
 if __name__ == "__main__":
-    pos, cls = get_target_position()
-    print(f"Final Result: {pos}, Class: {cls}")
+    pos, cls, cid = get_target_position()
+    print(f"Final Result: {pos}, Class: {cls}, Class ID: {cid}")
