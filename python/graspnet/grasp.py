@@ -20,6 +20,7 @@ if ROOT_DIR not in sys.path:
 from arx5_interface import Arx5CartesianController, EEFState
 from grasp2base.convert import convert_new
 from target_position_estimation import get_target_position
+from peripherals.joystick import JoystickRobotics, XboxButton
 # 同目录导入现有实现（其内部已设置 models/utils/graspnetAPI 路径）
 # 确保可以导入同目录下的 grasp_process.py
 CUR_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -118,13 +119,22 @@ def make_camera_info(color_w: int, color_h: int) -> gp.CameraInfo:
                          intrinsic[0][0], intrinsic[1][1], intrinsic[0][2], intrinsic[1][2],
                          factor_depth)
 
-def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation):
+def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handeye_rotation, handeye_translation, grasp_class=None):
     
-    #打印位姿信息
-    np.set_printoptions(precision=5, suppress=True)
-    print(f"grasp_translation (m):\n{grasp_translation}")
-    print(f"grasp_rotation_matrix:\n{grasp_rotation}")
-    print(f"width (m): {width:.5f}")
+    # #打印位姿信息
+    # np.set_printoptions(precision=5, suppress=True)
+    # print(f"grasp_translation (m):\n{grasp_translation}")
+    # print(f"grasp_rotation_matrix:\n{grasp_rotation}")
+    # print(f"width (m): {width:.5f}")
+
+    # Define gripper lengths for different classes
+    gripper_lengths = {
+        'ATEC_bottle': 0.01,
+        'ATEC_box': 0.02,
+        'ATEC_banana': 0.05
+    }
+    gripper_length = gripper_lengths.get(grasp_class, 0.02)
+    # print(f"[Info] Using gripper_length: {gripper_length} for class: {grasp_class}")
 
     # gripper_length 单位为米；负号在 convert_new 内部已处理为沿 -X 方向后退
     base_pose, _ = convert_new(
@@ -133,9 +143,9 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
         current_pose,
         handeye_rotation,
         handeye_translation,
-        gripper_length=0.04,
+        gripper_length=gripper_length,
     )
-    print("[DEBUG] 基坐标系抓取位姿:", base_pose)
+    # print("[DEBUG] 基坐标系抓取位姿:", base_pose)
 
     # 正式执行部分
     base_pose_np = np.array(base_pose, dtype=float)
@@ -170,12 +180,34 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     target_pos,_,class_id = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
     # 范围判断: x[-0.1-0.7], y[-0.55-0.55], z[0-0.35]
-    if not (target_pos is not None and -0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and 0 < target_pos[2] < 0.35):
+    if not (target_pos is not None and -0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and -0.2 < target_pos[2] < 0.35):
         print(f"[Warn] Target out of range or not detected: {target_pos}")
         return None, class_id
 
     # 计算预抓取位姿
-    if target_pos[2] < 0.10:
+    if grasp_class == 'ATEC_bottle':
+        pre_grasp_pose = np.array([
+            target_pos[0] - 0.25,
+            target_pos[1],
+            target_pos[2] + 0.13,
+            0.0, 0.6, 0.0
+        ])
+    elif grasp_class == 'ATEC_box':
+        # 竖着抓取
+        # pre_grasp_pose = np.array([
+        #     target_pos[0] - 0.18,
+        #     target_pos[1],
+        #     target_pos[2] + 0.16,
+        #     0.0, 1.1, 0.0
+        # ])
+        # 横着抓取
+        pre_grasp_pose = np.array([
+            target_pos[0] - 0.18,
+            target_pos[1],
+            target_pos[2] + 0.05,
+            0.0, 0.4, 0.0
+        ])
+    elif grasp_class == 'ATEC_banana':
         pre_grasp_pose = np.array([
             target_pos[0] - 0.17,
             target_pos[1],
@@ -183,6 +215,7 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
             0.0, 0.94, 0.0
         ])
     else:
+        # Default fallback
         pre_grasp_pose = np.array([
             target_pos[0] - 0.25,
             target_pos[1],
@@ -190,57 +223,17 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
             0.0, 0.6, 0.0
         ])
     
-    print(f"Executing pre-grasp pose: {pre_grasp_pose}")
+    # print(f"Executing pre-grasp pose: {pre_grasp_pose}")
     
     controller, now, eef_state = arm_time_and_state()
     grip_now = eef_state.gripper_pos
     
     controller.set_eef_traj([
         build_eef_cmd(eef_state.pose_6d().copy(), grip_now, now),
-        build_eef_cmd(pre_grasp_pose, grip_now, now + 3.0),
+        build_eef_cmd(pre_grasp_pose, grip_now, now + 2.0),
     ])
-    time.sleep(3.5)
+    time.sleep(3)
 
-    # if grasp_class == 'ATEC_box':
-    #     print("[Info] Optimizing ATEC_box orientation...")
-    #     initial_roll = pre_grasp_pose[3]
-    #     best_roll = initial_roll
-    #     min_size = float('inf')
-
-    #     # 2. Scan
-    #     offsets = np.concatenate([np.arange(0, 1.6, 0.16),[0], np.arange(-0.16, -1.6, -0.16)])
-        
-    #     for offset in offsets:
-    #         r = initial_roll + offset
-    #         if not (-1.65 < r < 1.65): continue
-            
-    #         pose = pre_grasp_pose.copy(); pose[3] = r
-    #         ctrl, now, _ = arm_time_and_state()
-    #         ctrl.set_eef_traj([build_eef_cmd(pose, grip_now, now + 0.4)])
-    #         time.sleep(0.9)
-            
-    #         color, _ = capture_frame(pipeline, align, 500)
-    #         if color is None: continue
-    #         for _ in range(10): pipeline.wait_for_frames()
-    #         try:
-    #             res = yolo_model(color, verbose=False, conf=0.4)
-    #             for b in res[0].boxes:
-    #                 if res[0].names[int(b.cls[0])] == 'ATEC_box':
-    #                     w, h = float(b.xywh[0][2]), float(b.xywh[0][3])
-    #                     if offsets==0:min_size = w * h
-    #                     if w < h: # Require horizontal < vertical
-    #                         size = w * h
-    #                         if size <= min_size:
-    #                             min_size = size
-    #                             best_roll = r
-    #         except: pass
-        
-    #     pre_grasp_pose[3] = best_roll
-    #     ctrl, now, _ = arm_time_and_state()
-    #     ctrl.set_eef_traj([build_eef_cmd(pre_grasp_pose, grip_now, now + 1)])
-    #     time.sleep(1.5)
-    #     print(f"[Info] Best roll found: {best_roll:.3f} rad")
-    
     # 返回一个 dummy grasp info 以满足 short_loop 的检查
     return {'translation': target_pos}, class_id
 
@@ -301,7 +294,8 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         if grasp_class == 'ATEC_bottle':
             return g['translation'][0]
         elif grasp_class == 'ATEC_box':
-            return g['width']
+            # return g['width']
+            return g['angle_x']
         elif grasp_class == 'ATEC_banana':
             return g.get('angle_x', float('inf'))
         return g.get('angle_x', float('inf'))
@@ -318,7 +312,8 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         best_grasp['width'],
         exec_pose,
         handeye_rotation,
-        handeye_translation
+        handeye_translation,
+        grasp_class=grasp_class
     )
     time.sleep(11)
     # 查询抓取完毕后的机械臂末端夹爪的 torque
@@ -359,8 +354,74 @@ def capture_frame(pipeline: Any, align: Any, timeout_ms: int = 10000) -> Tuple[O
         return None, None
 
 
-def short_loop(args):
+def manual_grasp_control(controller, joystick, return_pose=None, return_grip=None):
+    """Manual teleop control loop.
+
+    controller: Arx5CartesianController
+    joystick: JoystickRobotics
+    return_pose: optional 6-dim pose (np.ndarray) to return to when X pressed
+    return_grip: optional gripper position to set when returning
+    """
+    print("[Info] Switching to Manual Control. Press 'X' to confirm grasp success and return to original pose.")
+    cmd_dt = 0.01
+    preview_time = 0.1
+
+    start_time = time.monotonic()
+    loop_cnt = 0
+
+    success = False
+
+    try:
+        while True:
+            # Get joystick state (absolute pose from joystick)
+            joystick_pose, gripper_pos, control_button = joystick.get_control()
+
+            # Check for X button (Success)
+            if control_button == XboxButton.X:
+                print("[Info] Manual Grasp Confirmed (X pressed). Returning to original pose...")
+                success = True
+                # perform return motion if return_pose provided
+                if return_pose is not None:
+                    # read current eef state
+                    _, now, eef_state = arm_time_and_state()
+                    current_pose = eef_state.pose_6d().copy()
+                    current_grip = eef_state.gripper_pos
+
+                    target_grip = return_grip if return_grip is not None else current_grip
+
+                    # build a short trajectory: stay, then go to return_pose
+                    controller.set_eef_traj([
+                        build_eef_cmd(current_pose, current_grip, now),
+                        build_eef_cmd(np.array(return_pose, dtype=float), target_grip, now + 2.0),
+                    ])
+                    # give time to finish motion
+                    time.sleep(2.5)
+                break
+
+            current_timestamp = controller.get_timestamp()
+            eef_cmd = EEFState()
+            eef_cmd.pose_6d()[:] = joystick_pose
+            eef_cmd.gripper_pos = gripper_pos
+            eef_cmd.timestamp = current_timestamp + preview_time
+            controller.set_eef_cmd(eef_cmd)
+
+            loop_cnt += 1
+            target_time = start_time + loop_cnt * cmd_dt
+            sleep_time = target_time - time.monotonic()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+    except Exception as e:
+        print(f"[Error] manual_grasp_control exception: {e}")
+        success = False
+
+    return success
+
+
+def short_loop(args, control_mode_map=None):
     """主流程：初始化 -> 循环处理 -> 窗口与键盘交互。"""
+    if control_mode_map is None:
+        control_mode_map = {}
+
     # 模型
     net, device = gp.get_net(args.checkpoint_path, args.num_view)
 
@@ -393,7 +454,7 @@ def short_loop(args):
     _, start_ts, eef_state = arm_time_and_state()
     controller.set_eef_traj([
         build_eef_cmd(eef_state.pose_6d().copy(), eef_state.gripper_pos, start_ts),
-        build_eef_cmd(eef_state.pose_6d().copy(), grip_max, start_ts + 1)
+        build_eef_cmd(eef_state.pose_6d().copy(), grip_max, start_ts + 0.5)
     ])
     time.sleep(1)
 
@@ -403,9 +464,9 @@ def short_loop(args):
         
         controller.set_eef_traj([
             build_eef_cmd(eef_state.pose_6d().copy(), grip_home, start_ts),
-            build_eef_cmd(pose, grip_home, start_ts + 3.0),
+            build_eef_cmd(pose, grip_home, start_ts + 1.5),
         ])
-        time.sleep(3.5)
+        time.sleep(2.0)
         
         # YOLO 检测
         for _ in range(20):
@@ -440,6 +501,34 @@ def short_loop(args):
                     break
         
         print(f"[Info] Detected target class: {grasp_class} (ID: {cls_id})")
+
+        mode = control_mode_map.get(grasp_class, 'auto')
+        print(f"[Info] Control mode for {grasp_class}: {mode}")
+        
+        if mode == 'manual':
+            # Get current pose
+            _, _, eef_state = arm_time_and_state()
+            current_pose = eef_state.pose_6d()
+            current_pos = current_pose[:3]
+            current_euler = current_pose[3:]
+            current_gripper = eef_state.gripper_pos
+            
+            robot_config = controller.get_robot_config()
+            joystick = JoystickRobotics(
+                home_position=current_pos.tolist(),
+                home_euler=current_euler.tolist(),
+                home_gripper=current_gripper,
+                ee_limit=[[0.0, -0.5, -0.5, -1.8, -1.6, -1.6], [0.7, 0.5, 0.5, 1.8, 1.6, 1.6]],
+                gripper_limit=[0.0, robot_config.gripper_width],
+            )
+            
+            # pass the final pose so we can return to it when X is pressed, keeping current gripper width
+            final_pose = np.array([ 0.2402, 0.001, 0.1565, -0., 0.,  0. ], dtype=float)
+            result = manual_grasp_control(controller, joystick, return_pose=final_pose, return_grip=None)
+            joystick.stop()
+            here = True
+            return cls_id, result, here
+
         _, _, current_state = arm_time_and_state()
         print('[Info] Starting pre-grasp acquisition...')
         pre_grasp_info, class_id = acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class)

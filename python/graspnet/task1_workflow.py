@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import numpy as np
+import argparse
 # from pynput import keyboard
 
 # Ensure compiled module under ../python is discoverable before importing it
@@ -26,6 +27,13 @@ import struct
 # Global state
 last_obj_id = -1
 lc = lcm.LCM()
+
+# Control Mode Configuration: 'auto' for GraspNet, 'manual' for Joystick Teleop
+CONTROL_MODE_MAP = {
+    'ATEC_bottle': 'auto',
+    'ATEC_box': 'auto',
+    'ATEC_banana': 'auto'
+}
 
 def release_and_home(controller):
     print("[Info] Executing Release and Home sequence...")
@@ -71,6 +79,27 @@ def send_status(status, obj_id):
 
 def main():
     print("=== Task 1 Full Workflow (LCM Control) ===")
+
+    # Parse custom arguments for control modes
+    parser = argparse.ArgumentParser(description="Task 1 Workflow", add_help=False)
+    parser.add_argument('--bottle_mode', type=int, default=1, help='1: auto, 0: manual')
+    parser.add_argument('--box_mode', type=int, default=1, help='1: auto, 0: manual')
+    parser.add_argument('--banana_mode', type=int, default=1, help='1: auto, 0: manual')
+    
+    # Parse known args, leave the rest for grasp_process
+    custom_args, remaining_args = parser.parse_known_args()
+    
+    # Update global configuration
+    mode_map = {1: 'auto', 0: 'manual'}
+    CONTROL_MODE_MAP['ATEC_bottle'] = mode_map.get(custom_args.bottle_mode, 'auto')
+    CONTROL_MODE_MAP['ATEC_box'] = mode_map.get(custom_args.box_mode, 'auto')
+    CONTROL_MODE_MAP['ATEC_banana'] = mode_map.get(custom_args.banana_mode, 'auto')
+    
+    print(f"[Config] Modes set to: {CONTROL_MODE_MAP}")
+
+    # Update sys.argv to remove custom args so gp.parse_args() doesn't fail
+    sys.argv = [sys.argv[0]] + remaining_args
+
     # Mock args for grasp.short_loop
     default_ckpt = os.path.join(PY_ROOT, 'graspnet', 'checkpoint', 'checkpoint-rs.tar')
     if '--checkpoint_path' not in sys.argv:
@@ -88,7 +117,7 @@ def main():
             
             if cmd == 0: # Grasp
                 try:
-                    obj_id, result, here = grasp.short_loop(args)
+                    obj_id, result, here = grasp.short_loop(args, CONTROL_MODE_MAP)
                     if not here:
                         print("[Info] Target too far or not found (here=False)")
                         send_status(-1, obj_id)
