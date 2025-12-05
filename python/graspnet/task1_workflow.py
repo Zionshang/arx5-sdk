@@ -35,11 +35,12 @@ CONTROL_MODE_MAP = {
     'ATEC_banana': 'auto'
 }
 
-def release_and_home(controller):
+def release_and_home(controller, release_pose=None):
     print("[Info] Executing Release and Home sequence...")
     
     # Target release pose (Placeholder)
-    release_pose = np.array([ 0.4922,  0.001,  0.3725, -0.,  0.29, 0.    ], dtype=float)
+    if release_pose is None:
+        release_pose = np.array([ 0.4922,  0.001,  0.3725, -0.,  0.29, 0.    ], dtype=float)
     
     cfg = controller.get_controller_config()
     # gripper_width 在 robot_config 里，不在 controller_config
@@ -85,6 +86,7 @@ def main():
     parser.add_argument('--bottle_mode', type=int, default=1, help='1: auto, 0: manual')
     parser.add_argument('--box_mode', type=int, default=1, help='1: auto, 0: manual')
     parser.add_argument('--banana_mode', type=int, default=1, help='1: auto, 0: manual')
+    parser.add_argument('--release_pose', type=float, nargs=6, default=[0.4922, 0.001, 0.3725, -0., 0.29, 0.], help='Release pose 6D array')
     
     # Parse known args, leave the rest for grasp_process
     custom_args, remaining_args = parser.parse_known_args()
@@ -138,7 +140,8 @@ def main():
 
             elif cmd == 1: # Place
                 try:
-                    release_and_home(controller)
+                    target_release = np.array(custom_args.release_pose, dtype=float)
+                    release_and_home(controller, release_pose=target_release)
                     send_status(0, last_obj_id)
                 except Exception as e:
                     print(f"[Error] Place failed: {e}")

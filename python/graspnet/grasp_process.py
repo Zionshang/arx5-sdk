@@ -86,6 +86,8 @@ def parse_args():
     parser.add_argument('--voxel_size', type=float, default=0.01)
     parser.add_argument('--top_k', type=int, default=50, help='Top-K grasps to visualize')
     parser.add_argument('--vis_top_k', type=int, default=2, help='仅可视化按 score 排序后的前 K 个抓取')
+    parser.add_argument('--vis', action='store_true', default=False, help='Enable Open3D visualization window')
+    parser.add_argument('--save_vis', action='store_true', default=False, help='Enable saving visualization images')
     return parser.parse_args()
 
 
@@ -232,7 +234,7 @@ def yolo_get_mask(yolo_model, color, params, locked_class_name, mask_shrink_rati
 
 
 def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,
-                          current_ee_pose=None, handeye_rot=None, handeye_trans=None, save_path=None):
+                          current_ee_pose=None, handeye_rot=None, handeye_trans=None, save_path=None, vis=False):
     # prepare inputs
     end_points, cloud, cloud_masked, color_masked = prepare_end_points(color, depth, camera_info, args.num_point, device, workspace_mask=workspace_mask)
 
@@ -256,43 +258,6 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
     gg.nms()
     gg.sort_by_score()
 
-    # # 方向筛选（在基座标系下）：g, frame
-    # # 要求：
-    # #  - 抓取前进方向（x轴）与基座 -Z 夹角 < 30°
-    # #  - 抓取 y 轴与基座 +Y 夹角 < 110°
-
-    # base_down = np.array([0.0, 0.0, -1.0], dtype=np.float32)
-    # base_y = np.array([0.0, 1.0, 0.0], dtype=np.float32)
-    # thr_down = np.deg2rad(30.0)
-    # thr_left = np.deg2rad(110.0)
-
-    # keep_inds = []
-    # for i, grasp in enumerate(gg):
-    #     # 将抓取姿态转换到基座系，只取旋转矩阵
-    #     t_grasp = grasp.translation
-    #     R_grasp = grasp.rotation_matrix
-    #     _, R_base = convert_new(t_grasp, R_grasp, current_ee_pose, handeye_rot, handeye_trans, gripper_length=0.0)
-
-    #     x_dir = R_base[:, 0]
-    #     y_dir = R_base[:, 1]
-
-    #     cos1 = float(np.dot(x_dir, base_down))
-    #     cos1 = np.clip(cos1, -1.0, 1.0)
-    #     ang1 = np.arccos(cos1)
-
-    #     cos2 = float(np.dot(y_dir, base_y))
-    #     cos2 = np.clip(cos2, -1.0, 1.0)
-    #     ang2 = np.arccos(cos2)
-
-    #     if (ang1 < thr_down) and (ang2 < thr_left):
-    #     # if ang2 < thr_left:
-    #         keep_inds.append(i)
-
-    # if len(keep_inds) == 0:
-    #     print("\n[Warning] No grasp predictions meeting base-frame orientation constraints. Using all predictions.")
-    #     gg_filtered = gg
-    # else:
-    #     gg_filtered = gg[keep_inds]
     all_grasps = list(gg)
     vertical = np.array([0.0, 0.0, 1.0], dtype=float)
     camera_x = np.array([1.0, 0.0, 0.0], dtype=float)
@@ -355,16 +320,17 @@ def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, 
         safe_transform(frame, T)
         geoms_to_show.append(frame)
     # 注意：draw_geometries 为阻塞式调用，关闭窗口后函数才会继续
-    o3d.visualization.draw_geometries(geoms_to_show, window_name='Top-20 Grasps', width=800, height=600)
+    if vis:
+        o3d.visualization.draw_geometries(geoms_to_show, window_name='Top-20 Grasps', width=800, height=600)
     if save_path:
-        vis = o3d.visualization.Visualizer()
-        vis.create_window(window_name='Grasp', width=800, height=600, visible=False)
+        vis_obj = o3d.visualization.Visualizer()
+        vis_obj.create_window(window_name='Grasp', width=800, height=600, visible=False)
         for g in geoms_to_show:
-            vis.add_geometry(g)
-        vis.poll_events()
-        vis.update_renderer()
-        vis.capture_screen_image(save_path, do_render=True)
-        vis.destroy_window()
+            vis_obj.add_geometry(g)
+        vis_obj.poll_events()
+        vis_obj.update_renderer()
+        vis_obj.capture_screen_image(save_path, do_render=True)
+        vis_obj.destroy_window()
         print(f"[Info] Saved grasp visualization to {save_path}")
    
     return grasp_info

@@ -73,7 +73,6 @@ def build_eef_cmd(pose: np.ndarray, grip: float, timestamp: float):
     return cmd
 
 # --------------------------- 小工具：初始化 ---------------------------
-SAVE_VISUALIZATION = True
 VIS_SAVE_DIR = os.path.join(ROOT_DIR,'graspnet', 'doc', 'grasp_result')
 os.makedirs(VIS_SAVE_DIR, exist_ok=True)
 
@@ -284,7 +283,7 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     return {'translation': target_pos}, class_id
 
 
-def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class=None):
+def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class=None, vis=False, save_vis=False):
     handeye_rot = np.array(handeye_rotation, dtype=float)
     handeye_trans = np.array(handeye_translation, dtype=float)
     grasp_candidates = []
@@ -307,14 +306,15 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         current_pose = eef_state.pose_6d().copy()
 
         timestamp = int(time.time())
-        if SAVE_VISUALIZATION and seg_vis is not None:
+        if save_vis and seg_vis is not None:
             cv2.imwrite(os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_yolo.jpg'), seg_vis)
 
         try:
             grasp = gp.run_graspnet_for_mask(
                 net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
                 current_pose, handeye_rot, handeye_trans,
-                save_path=os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
+                save_path=os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_3d.png') if save_vis else None,
+                vis=vis
             )
         except Exception as e:
             print(f"[Error] GraspNet inference failed: {e}")
@@ -377,7 +377,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
     print(f"[Info] Gripper torque after grasp: {eef_state.gripper_torque}")
     gripper_torque = eef_state.gripper_torque
 
-    if SAVE_VISUALIZATION:
+    if save_vis:
         print("[Info] Capturing post-grasp image...")
         color, _ = capture_frame(pipeline, align)
         if color is not None:
@@ -473,7 +473,7 @@ def manual_grasp_control(controller, joystick, return_pose=None, return_grip=Non
     return success
 
 
-def short_loop(args, control_mode_map=None):
+def short_loop(args, control_mode_map=None, vis=False, save_vis=False):
     """主流程：初始化 -> 循环处理 -> 窗口与键盘交互。"""
     if control_mode_map is None:
         control_mode_map = {}
@@ -601,7 +601,8 @@ def short_loop(args, control_mode_map=None):
 
         print('[Info] Collecting final grasp candidates...')
         final_grasp, gripper_torque = acquire_and_execute_final_grasp(
-            net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class
+            net, device, pipeline, align, camera_info, args, pcd, yolo_model, yolo_params, grasp_class,
+            vis=vis, save_vis=save_vis
         )
         
         here = True
@@ -626,7 +627,7 @@ def main():
     if '--checkpoint_path' not in sys.argv:
         sys.argv += ['--checkpoint_path', default_ckpt]
     args = gp.parse_args()
-    short_loop(args)
+    short_loop(args, vis=args.vis, save_vis=args.save_vis)
 
 
 if __name__ == '__main__':
