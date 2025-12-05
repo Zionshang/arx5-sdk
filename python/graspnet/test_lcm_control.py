@@ -6,9 +6,9 @@ import time
 def listen_status(lc):
     def handler(channel, data):
         try:
-            status, obj_id = struct.unpack("ii", data)
+            status = struct.unpack("i", data)[0]
             res = "Success" if status == 0 else "Fail"
-            print(f"\n[LCM RX] {channel}: Status={res}({status}), ObjID={obj_id}")
+            print(f"\n[LCM RX] {channel}: Status={res}({status})")
             print("Command > ", end="", flush=True)
         except Exception as e:
             print(f"[LCM Error] Decode failed: {e}")
@@ -21,7 +21,7 @@ def listen_status(lc):
             break
 
 def main():
-    lc = lcm.LCM()
+    lc = lcm.LCM("udpm://239.255.50.50:10010?ttl=1")
     
     # Start listener thread
     t = threading.Thread(target=listen_status, args=(lc,), daemon=True)

@@ -247,11 +247,17 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
             0.0, 0.4, 0.0
         ])
     elif grasp_class == 'ATEC_banana':
+        # pre_grasp_pose = np.array([
+        #     target_pos[0] - 0.18,
+        #     target_pos[1],
+        #     target_pos[2] + 0.17,
+        #     0.0, 0.9, 0.0
+        # ])
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.18,
+            target_pos[0] - 0.17,
             target_pos[1],
             target_pos[2] + 0.17,
-            0.0, 0.9, 0.0
+            0.0, 0.94, 0.0
         ])
         # pre_grasp_pose = np.array([
         #     target_pos[0] - 0.18,

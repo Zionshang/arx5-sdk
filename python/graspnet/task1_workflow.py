@@ -26,7 +26,8 @@ import struct
 
 # Global state
 last_obj_id = -1
-lc = lcm.LCM()
+# Initialize LCM with specified URL
+lc = lcm.LCM("udpm://239.255.50.50:10010?ttl=1")
 
 # Control Mode Configuration: 'auto' for GraspNet, 'manual' for Joystick Teleop
 CONTROL_MODE_MAP = {
@@ -71,12 +72,12 @@ def release_and_home(controller, release_pose=None):
     controller.reset_to_home()
     time.sleep(3.5)
 
-def send_status(status, obj_id):
+def send_status(status):
     # status: 0=Success, 1=Fail
-    # obj_id: YOLO class ID
-    msg = struct.pack("ii", status, obj_id)
+    # Only send int type status
+    msg = struct.pack("i", status)
     lc.publish("ARM_STATUS", msg)
-    print(f"[LCM] Sent Status: {status}, ID: {obj_id}")
+    print(f"[LCM] Sent Status: {status}")
 
 def main():
     print("=== Task 1 Full Workflow (LCM Control) ===")
@@ -120,33 +121,30 @@ def main():
             if cmd == 0: # Grasp
                 try:
                     obj_id, result, here = grasp.short_loop(args, CONTROL_MODE_MAP)
-                    if not here:
-                        print("[Info] Target too far or not found (here=False)")
-                        send_status(-1, obj_id)
-                    elif not result:
-                        print("[Info] Grasp failed (result=False)")
+                    if not here or not result:
+                        print("[Info] Grasp failed (here=False or result=False)")
                         if obj_id is not None and obj_id >= 0:
                             last_obj_id = obj_id
-                        send_status(1, last_obj_id)
+                        send_status(1)  # 失败
                     else:
                         print("[Info] Grasp success")
                         if obj_id is not None and obj_id >= 0:
                             last_obj_id = obj_id
-                        send_status(0, last_obj_id)
+                        send_status(0)  # 成功
                 except Exception as e:
                     print(f"[Error] Grasp failed: {e}")
                     controller.reset_to_home()
-                    send_status(1, -1)
+                    send_status(1)  # 失败
 
-            elif cmd == 1: # Place
+            elif cmd == 1: # Pick/Place
                 try:
                     target_release = np.array(custom_args.release_pose, dtype=float)
                     release_and_home(controller, release_pose=target_release)
-                    send_status(0, last_obj_id)
+                    send_status(0)  # 成功
                 except Exception as e:
-                    print(f"[Error] Place failed: {e}")
+                    print(f"[Error] Pick/Place failed: {e}")
                     controller.reset_to_home()
-                    send_status(1, last_obj_id)
+                    send_status(1)  # 失败
                     
         except Exception as e:
             print(f"[LCM Error] {e}")
