@@ -163,8 +163,22 @@ def prepare_end_points(color, depth, camera_info, num_point, device, workspace_m
     return end_points, cloud, cloud_masked, color_masked
 
 
-def yolo_get_mask(yolo_model, color, params, locked_class_name):
-    """检测并选择置信度最高的目标，首次识别后锁定该类别。"""
+def yolo_get_mask(yolo_model, color, params, locked_class_name, mask_shrink_ratio=1.0):
+    """检测并选择置信度最高的目标，首次识别后锁定该类别。
+    
+    Args:
+        yolo_model: YOLO模型实例
+        color: 输入图像
+        params: YOLO预测参数
+        locked_class_name: 锁定的类别名称
+        mask_shrink_ratio: 掩码缩小比例 (0.0-1.0)，值越小掩码越小。
+                          例如 0.8 表示将掩码缩小到原来的80%，可以减少背景点云的影响。
+    
+    Returns:
+        mask: 生成的掩码
+        plot: YOLO可视化结果
+        locked_class_name: 锁定的类别名称
+    """
     run_params = params.copy()
     # 若已锁定，只检测该类别
     if locked_class_name is not None and hasattr(yolo_model, "names"):
@@ -186,16 +200,35 @@ def yolo_get_mask(yolo_model, color, params, locked_class_name):
         locked_class_name = r.names[best_class] if hasattr(r, 'names') else str(best_class)
         print(f"[Info] 锁定目标类别: {locked_class_name} (ID: {best_class})")
 
-    # 生成掩码 (仅使用Box)
+    # 生成掩码 (仅使用Box)，并根据 mask_shrink_ratio 缩小掩码
     mask = np.zeros(color.shape[:2], dtype=np.uint8)
     box = r.boxes.xyxy[best_idx].detach().cpu().numpy().astype(int)
     x1, y1, x2, y2 = box
+    
+    # 应用缩小比例：从边界框中心向内收缩
+    if mask_shrink_ratio < 1.0 and mask_shrink_ratio > 0.0:
+        cx = (x1 + x2) / 2.0
+        cy = (y1 + y2) / 2.0
+        w = x2 - x1
+        h = y2 - y1
+        
+        # 缩小宽度和高度
+        new_w = w * mask_shrink_ratio
+        new_h = h * mask_shrink_ratio
+        
+        # 计算新的边界框
+        x1 = int(cx - new_w / 2.0)
+        y1 = int(cy - new_h / 2.0)
+        x2 = int(cx + new_w / 2.0)
+        y2 = int(cy + new_h / 2.0)
+    
     # Clip to image bounds
     x1, x2 = np.clip([x1, x2], 0, color.shape[1])
     y1, y2 = np.clip([y1, y2], 0, color.shape[0])
     mask[y1:y2, x1:x2] = 255
 
     return mask, r.plot(), locked_class_name
+
 
 
 def run_graspnet_for_mask(net, device, color, depth, camera_info, args, pcd, T, workspace_mask,
@@ -392,6 +425,7 @@ def main():
     gripper_geoms = []
     # 帧计数器：用于控制算法触发频率
     frame_idx = 0
+    locked_class_name = None  # 用于锁定检测的目标类别
 
     try:
         while True:
@@ -412,7 +446,9 @@ def main():
             seg_vis = None
             if frame_idx % 5 == 0:
                 # 使用 YOLO 得到掩码（若返回 None 则表示未检测到目标）
-                workspace_mask, seg_vis = yolo_get_mask(yolo_model, color, yolo_predict_params)
+                workspace_mask, seg_vis, locked_class_name = yolo_get_mask(
+                    yolo_model, color, yolo_predict_params, locked_class_name
+                )
 
                 # 只有在检测到目标掩码时才运行 GraspNet；否则跳过 GraspNet 推理
                 if workspace_mask is not None:

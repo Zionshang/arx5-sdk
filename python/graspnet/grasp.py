@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 import open3d as o3d
 import pyrealsense2 as rs
+import json
 from scipy.spatial.transform import Rotation as R
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
@@ -37,7 +38,10 @@ T_o3d = np.eye(4, dtype=np.float64)
 T_o3d[:3, :3] = np.array([[1.0, 0.0, 0.0],
                           [0.0, -1.0, 0.0],
                           [0.0, 0.0, -1.0]], dtype=np.float64)
- 
+
+# =============== 掩码缩放参数（在此修改！）===============
+MASK_SHRINK_RATIO = 0.8  # 掩码缩小比例 (0.5-1.0)，值越小掩码越小，减少背景干扰
+# 推荐值: 0.7-0.9，默认 0.8
 
 # =============== 机械臂控制（简洁接口） ===============
 _ARM_CONTROLLER = None  # 缓存控制器，避免重复初始化
@@ -91,15 +95,44 @@ def init_yolo(root_dir: str):
     return yolo_model, params
 
 
-def init_realsense(color_w: int = 640, color_h: int = 480):
-    """初始化 RealSense（颜色/深度对齐到彩色），返回 (pipeline, align)。"""
+def init_realsense(color_w: int = 640, color_h: int = 480, config_file: str = None):
+    """初始化 RealSense（颜色/深度对齐到彩色），返回 (pipeline, align)。
+    
+    Args:
+        color_w: 彩色图像宽度
+        color_h: 彩色图像高度
+        config_file: 配置文件路径，如果提供则从文件加载相机设置
+    """
     pipeline = rs.pipeline()
     config = rs.config()
     config.enable_stream(rs.stream.color, color_w, color_h, rs.format.bgr8, 30)
     config.enable_stream(rs.stream.depth, color_w, color_h, rs.format.z16, 30)
     align = rs.align(rs.stream.color)
-    pipeline.start(config)
-
+    
+    # 启动 pipeline
+    profile = pipeline.start(config)
+    
+    # 如果提供了配置文件，使用 RealSense 官方 API 加载配置
+    if config_file and os.path.exists(config_file):
+        try:
+            print(f"[Info] Loading RealSense config from: {config_file}")
+            device = profile.get_device()
+            
+            # 使用 RealSense 官方的 load_json 方法
+            advanced_mode = rs.rs400_advanced_mode(device)
+            with open(config_file, 'r') as f:
+                json_string = f.read()
+            advanced_mode.load_json(json_string)
+            
+            print("[Info] RealSense config loaded successfully via load_json")
+        except Exception as e:
+            print(f"[Warn] Failed to load config file: {e}")
+            print("[Info] Using default RealSense settings")
+    else:
+        if config_file:
+            print(f"[Warn] Config file not found: {config_file}")
+        print("[Info] Using default RealSense settings")
+    
     return pipeline, align
 
 
@@ -131,7 +164,7 @@ def grasp_control(grasp_translation, grasp_rotation, width, current_pose, handey
     gripper_lengths = {
         'ATEC_bottle': 0.01,
         'ATEC_box': 0.02,
-        'ATEC_banana': 0.05
+        'ATEC_banana': 0.02
     }
     gripper_length = gripper_lengths.get(grasp_class, 0.02)
     # print(f"[Info] Using gripper_length: {gripper_length} for class: {grasp_class}")
@@ -179,9 +212,16 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
     # 获取目标位置
     target_pos,_,class_id = get_target_position(pipeline, align, yolo_model,current_state, grasp_class)
 
+    # 如果检测到物体但深度无效（透明物体等），使用当前位置作为预抓取位置
+    if target_pos is None:
+        print(f"[Info] Target detected but depth invalid (transparent object?), using current position for pre-grasp")
+        current_pose = current_state.pose_6d()
+        pre_grasp_pose = current_pose.copy()
+        return pre_grasp_pose, class_id
+
     # 范围判断: x[-0.1-0.7], y[-0.55-0.55], z[0-0.35]
-    if not (target_pos is not None and -0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and -0.2 < target_pos[2] < 0.35):
-        print(f"[Warn] Target out of range or not detected: {target_pos}")
+    if not (-0.1 < target_pos[0] < 0.7 and -0.55 < target_pos[1] < 0.55 and -0.2 < target_pos[2] < 0.35):
+        print(f"[Warn] Target out of range: {target_pos}")
         return None, class_id
 
     # 计算预抓取位姿
@@ -209,11 +249,17 @@ def acquire_and_pregrasp(pipeline, align, yolo_model, current_state, grasp_class
         ])
     elif grasp_class == 'ATEC_banana':
         pre_grasp_pose = np.array([
-            target_pos[0] - 0.17,
+            target_pos[0] - 0.18,
             target_pos[1],
             target_pos[2] + 0.17,
-            0.0, 0.94, 0.0
+            0.0, 0.9, 0.0
         ])
+        # pre_grasp_pose = np.array([
+        #     target_pos[0] - 0.18,
+        #     target_pos[1],
+        #     target_pos[2] + 0.05,
+        #     0.0, 0.4, 0.0
+        #      ])
     else:
         # Default fallback
         pre_grasp_pose = np.array([
@@ -253,7 +299,7 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         color, depth = capture_frame(pipeline, align)
         if color is None or depth is None:
             continue
-        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, grasp_class)
+        mask, seg_vis, _ = gp.yolo_get_mask(yolo_model, color, yolo_params, grasp_class, mask_shrink_ratio=MASK_SHRINK_RATIO)
         if mask is None:
             continue
 
@@ -264,11 +310,21 @@ def acquire_and_execute_final_grasp(net, device, pipeline, align, camera_info, a
         if SAVE_VISUALIZATION and seg_vis is not None:
             cv2.imwrite(os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_yolo.jpg'), seg_vis)
 
-        grasp = gp.run_graspnet_for_mask(
-            net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
-            current_pose, handeye_rot, handeye_trans,
-            save_path=os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
-        )
+        try:
+            grasp = gp.run_graspnet_for_mask(
+                net, device, color, depth, camera_info, args, pcd, T_o3d, mask,
+                current_pose, handeye_rot, handeye_trans,
+                save_path=os.path.join(VIS_SAVE_DIR, f'final_{timestamp}_3d.png') if SAVE_VISUALIZATION else None
+            )
+        except Exception as e:
+            print(f"[Error] GraspNet inference failed: {e}")
+            print("[Info] This may be due to CPU instruction set incompatibility (AVX2/AVX512)")
+            print("[Info] Possible solutions:")
+            print("  1. Check PyTorch installation: pip list | grep torch")
+            print("  2. Reinstall PyTorch with CPU-only version if needed")
+            print("  3. Check if running on a compatible CPU")
+            return None, 0.0
+            
         #判断抓取是否非none
         if grasp is None:
             print("[Warn] No grasp detected.")
@@ -438,7 +494,10 @@ def short_loop(args, control_mode_map=None):
     # RealSense + 相机内参
     color_w, color_h = 640, 480
     camera_info = make_camera_info(color_w, color_h)
-    pipeline, align = init_realsense(color_w, color_h)
+    
+    # 从配置文件初始化 RealSense
+    config_path = os.path.expanduser('~/d435_default_config.json')
+    pipeline, align = init_realsense(color_w, color_h, config_file=config_path)
 
     # 预抓取位姿确定
     prep_poses = [
@@ -475,7 +534,7 @@ def short_loop(args, control_mode_map=None):
             color_frame = aligned.get_color_frame()
             if color_frame:
                 img = np.asanyarray(color_frame.get_data())
-                mask, _, locked_class = gp.yolo_get_mask(yolo_model, img, yolo_params, None)
+                mask, _, locked_class = gp.yolo_get_mask(yolo_model, img, yolo_params, None, mask_shrink_ratio=MASK_SHRINK_RATIO)
                 if mask is not None:
                     found_target = True
                     grasp_class_ = locked_class
