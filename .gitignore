@@ -2,6 +2,5 @@ build
 __pycache__
 *cpython*.so
 python/data
-build*
 python/joycon/joycon_robotics.egg-info
 .vscode

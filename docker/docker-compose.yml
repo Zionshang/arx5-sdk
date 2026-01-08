@@ -3,8 +3,8 @@ version: '3.8'
 services:
   arx5:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile.x86
       # Ensure we build for the target architecture if running docker compose build
       # But usually you build with buildx.
     image: arx5-sdk:latest
