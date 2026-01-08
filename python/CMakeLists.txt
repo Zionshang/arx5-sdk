@@ -1,6 +1,7 @@
 cmake_minimum_required( VERSION 3.16.3 )
 
-set(CPP_DIR ${CMAKE_SOURCE_DIR}/cpp)
+get_filename_component(ROOT_DIR ${CMAKE_SOURCE_DIR} PATH)
+set(CPP_DIR ${ROOT_DIR}/cpp)
 
 find_package(pybind11 REQUIRED)
 find_package(Threads REQUIRED)
@@ -26,10 +27,10 @@ add_compile_options(-pthread)
 target_compile_definitions(arx5_interface PRIVATE SDK_ROOT="${CMAKE_BINARY_DIR}/..")
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm.*|arm|aarch64")
-    set(LIB_DIR ${CMAKE_SOURCE_DIR}/lib/aarch64)
+    set(LIB_DIR ${ROOT_DIR}/lib/aarch64)
 
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64)|(AMD64)|(^i686)")
-    set(LIB_DIR ${CMAKE_SOURCE_DIR}/lib/x86_64)
+    set(LIB_DIR ${ROOT_DIR}/lib/x86_64)
 endif()
 
 target_link_libraries(arx5_interface PRIVATE 
