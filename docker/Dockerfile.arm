@@ -60,17 +60,10 @@ RUN git clone https://github.com/OpenEtherCATsociety/SOEM.git /tmp/SOEM && \
 COPY . /app
 
 # Build the Python C++ Extension
-# 1. Create build directory
-# 2. Run CMake and Make
-# 3. Move the generated .so file to the python root so scripts can import it
-RUN cd python && \
-    mkdir -p build && \
+RUN mkdir build && \
     cd build && \
     cmake .. && \
-    make -j$(nproc) && \
-    # Move the compiled shared object to python/ directory for easy import
-    # The output path is controlled by CMake, look specifically in the build dir or absolute path
-    find . -name "arx5_interface.cpython-*.so" -exec cp {} ../ \;
+    make -j$(nproc)
 
 # Install the joystick package
 RUN pip install pygame

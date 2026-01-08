@@ -45,13 +45,10 @@ SHELL ["conda", "run", "-n", "arx-py310", "/bin/bash", "-c"]
 COPY . /app
 
 # Build the Python C++ Extension
-RUN cd python && \
-    mkdir -p build && \
+RUN mkdir build && \
     cd build && \
     cmake .. && \
-    make -j$(nproc) && \
-    # Move the compiled shared object to python/ directory
-    find . -name "arx5_interface.cpython-*.so" -exec cp {} ../ \;
+    make -j$(nproc)
 
 # Install the joystick package
 RUN pip install pygame
