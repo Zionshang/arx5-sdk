@@ -1,14 +1,37 @@
 version: '3.8'
 
 services:
-  arx5:
+  arx5-x86:
     build:
       context: ..
       dockerfile: docker/Dockerfile.x86
-      # Ensure we build for the target architecture if running docker compose build
-      # But usually you build with buildx.
-    image: arx5-sdk:latest
-    container_name: arx5-sdk
+    image: arx5-sdk:x86
+    container_name: arx5-sdk-x86
+    platform: linux/amd64
+    # Essential for hardware access (CAN, USB)
+    network_mode: host
+    privileged: true
+    volumes:
+      # Map the source code to allow editing on host (optional)
+      # - .:/app
+      # Map /dev for hardware access
+      - /dev:/dev
+      # Map udev rules (optional, helpful if you need to reload rules inside)
+      - /run/udev:/run/udev:ro
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    # Interactive mode
+    stdin_open: true
+    tty: true
+
+  arx5-arm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.arm
+    image: arx5-sdk:arm
+    container_name: arx5-sdk-arm
+    platform: linux/arm64
     # Essential for hardware access (CAN, USB)
     network_mode: host
     privileged: true
