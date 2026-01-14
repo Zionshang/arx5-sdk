@@ -43,6 +43,15 @@ class StateDict(TypedDict):
 
 
 class Arx5LcmClient:
+    """LCM client for the ARX5 Cartesian controller.
+
+    Usage:
+    - Create: client = Arx5LcmClient(address="239.255.76.67", port=7667, ttl=1)
+    - State: state = client.get_state()
+    - Move: client.set_ee_pose(state["ee_pose"], gripper_pos=None, preview_time=0.1)
+    - Gains: gain = client.get_gain(); client.set_gain(gain)
+    - Safety: client.reset_to_home(); client.set_to_damping()
+    """
     def __init__(self, url: str = "", address: str = "239.255.76.67", port: int = 7667, ttl: int = 1):
         if url:
             # Use user provided URL string directly
