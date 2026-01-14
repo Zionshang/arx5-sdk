@@ -33,7 +33,7 @@ When updating the sdk to your codebase, please first remove the entire `build` f
 - No `sudo` requirement for building the library (all dependencies are managed under conda environment, thanks to [Cheng Chi](https://cheng-chi.github.io/))
 - Simple python interface with complete type hints (see `python/arx5_interface.pyi`, please include it into your vscode config `"python.analysis.extraPaths"`)
 - Joint controller runs at 500Hz in the background (motor communication delay ~0.4ms)
-- Cartesian space controller with keyboard and SpaceMouse tele-operation and teach-replay (thanks to [Cheng Chi](https://cheng-chi.github.io/))
+- Cartesian space controller with keyboard tele-operation and teach-replay (thanks to [Cheng Chi](https://cheng-chi.github.io/))
 - Control multiple arms in the same process through C++ multi-threading (much better than Python multi-processing)
 
 ## Build & Install
@@ -167,17 +167,9 @@ sudo ip link set up can0 type can bitrate 1000000
 ```
 
 
-## Spacemouse setup (for Cartesian control)
-All the configurations are tested using 3Dconnexion spacemouse. You can skip this step and use keyboard to test Cartesian control.
-```sh
-sudo apt install libspnav-dev spacenavd
-sudo systemctl enable spacenavd.service
-sudo systemctl start spacenavd.service
-```
-
 ## Test scripts
 
-Arguments for `test_joint_control.py`, `keyboard_teleop.py`, `spacemouse_teleop.py` and `teach_replay.py`: 
+Arguments for `test_joint_control.py`, `keyboard_teleop.py` and `teach_replay.py`: 
 - (required) model: `X5` (silver and black) or `L5` (all black metal with blue or red LED light). **Choosing the wrong model may lead to dangerous movements!**
 - (required) interface: `can0`, `enx6c1ff70ac436` etc. (run `ip a` to check your interface name)
 - (optional) urdf_path `-u`: by default `../models/arx5.urdf`
@@ -187,7 +179,6 @@ cd python
 python examples/test_joint_control.py X5 can0 # replace X5 with L5 for the other model 
 python examples/test_bimanual.py # For two X5 arms using can0 and can1, each arm will act the same as test_joint_control.py
 python examples/keyboard_teleop.py X5 can0
-python examples/spacemouse_teleop.py X5 can0
 python examples/teach_replay.py X5 can0
 ```
 To use python sdk from other directories, please make sure `./python` is in `$PYTHONPATH` and `./lib/x86_64` or `./lib/aarch64` (depend on your computer system) is in `$LD_LIBRARY_PATH`. 
