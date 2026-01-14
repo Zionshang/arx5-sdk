@@ -3,6 +3,7 @@ import os
 import sys
 
 import numpy as np
+import time
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
@@ -31,6 +32,17 @@ def print_state(prefix: str, state: dict) -> None:
     )
 
 
+def print_gain(prefix: str, gain: dict) -> None:
+    kp = gain["kp"]
+    kd = gain["kd"]
+    print(
+        f"{prefix} kp={np.array2string(kp, precision=4)}, "
+        f"kd={np.array2string(kd, precision=4)}, "
+        f"gripper_kp={gain['gripper_kp']:.4f}, "
+        f"gripper_kd={gain['gripper_kd']:.4f}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Test Arx5LcmClient against a real robot.")
     parser.add_argument("--url", default="", help="LCM URL, e.g. udpm://239.255.76.67:7667?ttl=1")
@@ -38,8 +50,6 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=7667, help="LCM multicast port")
     parser.add_argument("--ttl", type=int, default=1, help="LCM multicast TTL")
     parser.add_argument("--auto", action="store_true", help="Run without interactive confirmations")
-    parser.add_argument("--move-step", type=float, default=0.01, help="Small EE x-axis move in meters")
-    parser.add_argument("--preview-time", type=float, default=0.1, help="Preview time in seconds")
     args = parser.parse_args()
 
     print("Connecting to LCM server...")
@@ -48,11 +58,14 @@ def main() -> None:
     print("\n[1/7] GET_STATE")
     state = client.get_state()
     print_state("Current", state)
+    time.sleep(1.0)
 
     print("\n[2/7] GET_GAIN + SET_GAIN (round trip)")
     gain = client.get_gain()
+    print_gain("Current gain", gain)
     client.set_gain(gain)
     print("Gain round trip OK")
+    time.sleep(1.0)
 
     print("\n[3/7] RESET_TO_HOME (optional)")
     if ask_yes_no("Reset robot to home position?", args.auto):
@@ -66,25 +79,22 @@ def main() -> None:
     if ask_yes_no("Send small EE pose delta on +X?", args.auto):
         state = client.get_state()
         target_pose = state["ee_pose"].copy()
-        target_pose[0] += args.move_step
-        client.set_ee_pose(target_pose, gripper_pos=None, preview_time=args.preview_time)
+        target_pose[2] += 0.1
+        client.set_ee_pose(target_pose, gripper_pos=0.4, preview_time=2.0)
         state = client.get_state()
+        time.sleep(2.5)
         print_state("After move", state)
     else:
         print("Skipped")
 
-    print("\n[5/6] SET_EE_POSE without gripper_pos (should keep gripper)")
+    print("\n[5/6] SET_EE_POSE without gripper_pos and preview_time")
     if ask_yes_no("Send same pose without gripper_pos?", args.auto):
         state = client.get_state()
-        before_gripper = float(state["gripper_pos"])
-        client.set_ee_pose(state["ee_pose"], gripper_pos=None, preview_time=None)
-        state = client.get_state()
-        after_gripper = float(state["gripper_pos"])
-        print_state("After gripper hold", state)
-        if abs(after_gripper - before_gripper) < 1e-4:
-            print("Gripper position unchanged (OK)")
-        else:
-            print(f"Gripper position changed: {before_gripper:.4f} -> {after_gripper:.4f}")
+        target_pose = state["ee_pose"].copy()
+        target_pose[2] -= 0.05
+        client.set_ee_pose(target_pose, gripper_pos=None, preview_time=None)
+        time.sleep(1.0)
+        print_state("After move", state)
     else:
         print("Skipped")
 

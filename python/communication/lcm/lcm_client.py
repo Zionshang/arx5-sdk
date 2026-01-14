@@ -1,14 +1,22 @@
 from typing import Any, Optional, Union, cast
+import os
+import sys
 import lcm
+import numpy.typing as npt
+import numpy as np
+import traceback
+import select
+
+# Ensure LCM-generated modules can resolve `import msg.*`
+file_path = os.path.abspath(__file__)
+LCM_DIR = os.path.dirname(file_path)
+if LCM_DIR not in sys.path:
+    sys.path.append(LCM_DIR)
+
 from .msg.arx5_command_t import arx5_command_t
 from .msg.arx5_response_t import arx5_response_t
 from .msg.arx5_state_t import arx5_state_t
 from .msg.arx5_gain_t import arx5_gain_t
-import numpy.typing as npt
-import numpy as np
-import sys
-import traceback
-import select
 
 
 def echo_exception():

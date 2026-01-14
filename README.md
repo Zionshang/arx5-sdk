@@ -47,8 +47,8 @@ mamba env create -f conda_environments/py310_environment.yaml
 # Currently available python versions: 3.8, 3.9, 3.10, 3.11 
 conda activate arx-py310
 mkdir build && cd build
-cmake ..
-make -j
+cmake .. # you can also add -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
 # At this point, you should be able to run test scripts below.
 ```
 ``` sh
