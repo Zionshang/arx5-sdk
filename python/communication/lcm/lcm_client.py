@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, TypedDict, Union, cast
 import os
 import sys
 import lcm
@@ -24,9 +24,23 @@ def echo_exception():
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
     return "".join(tb_lines)
 
+class GainDict(TypedDict):
+    kp: npt.NDArray[np.float64]
+    kd: npt.NDArray[np.float64]
+    gripper_kp: float
+    gripper_kd: float
 
-CTRL_DT = 0.005
-GRIPPER_WIDTH = 0.08
+
+class StateDict(TypedDict):
+    timestamp: float
+    ee_pose: npt.NDArray[np.float64]
+    joint_pos: npt.NDArray[np.float64]
+    joint_vel: npt.NDArray[np.float64]
+    joint_torque: npt.NDArray[np.float64]
+    gripper_pos: float
+    gripper_vel: float
+    gripper_torque: float
+
 
 class Arx5LcmClient:
     def __init__(self, url: str = "", address: str = "239.255.76.67", port: int = 7667, ttl: int = 1):
@@ -43,7 +57,7 @@ class Arx5LcmClient:
         self.request_channel = "ARX5_REQUEST"
         self.response_channel = "ARX5_RESPONSE"
         self.lc.subscribe(self.response_channel, self._handler)
-        self.latest_state: dict[str, Union[npt.NDArray[np.float64], float]]
+        self.latest_state: StateDict
         self.current_response: Optional[arx5_response_t] = None
 
         print(f"Arx5LcmClient initialized on channels {self.request_channel}/{self.response_channel}. Typed.")
@@ -68,7 +82,7 @@ class Arx5LcmClient:
 
         if resp.resp_type == arx5_response_t.TYPE_STATE:
             st = resp.state
-            data = {
+            state_data: StateDict = {
                 "timestamp": st.timestamp,
                 "ee_pose": np.array(st.ee_pose),
                 "joint_pos": np.array(st.joint_pos),
@@ -78,12 +92,17 @@ class Arx5LcmClient:
                 "gripper_vel": st.gripper_vel,
                 "gripper_torque": st.gripper_torque,
             }
-            return {"cmd": cmd, "data": data}
+            return {"cmd": cmd, "data": state_data}
 
         if resp.resp_type == arx5_response_t.TYPE_GAIN:
             g = resp.gain
-            data = {"kp": np.array(g.kp), "kd": np.array(g.kd), "gripper_kp": g.gripper_kp, "gripper_kd": g.gripper_kd}
-            return {"cmd": cmd, "data": data}
+            gain_data: GainDict = {
+                "kp": np.array(g.kp),
+                "kd": np.array(g.kd),
+                "gripper_kp": g.gripper_kp,
+                "gripper_kd": g.gripper_kd,
+            }
+            return {"cmd": cmd, "data": gain_data}
 
         return {"cmd": cmd, "data": "Unknown Response Type"}
 
@@ -149,7 +168,19 @@ class Arx5LcmClient:
             print(echo_exception())
             return {"cmd": "UNKNOWN", "data": "LcmError"}
 
-    def get_state(self):
+    def get_state(self) -> StateDict:
+        """Return the latest robot state.
+
+        Keys:
+        - timestamp: seconds since controller start
+        - ee_pose: 6D end-effector pose (x, y, z, rx, ry, rz)
+        - joint_pos: joint positions
+        - joint_vel: joint velocities
+        - joint_torque: joint torques
+        - gripper_pos: gripper position
+        - gripper_vel: gripper velocity
+        - gripper_torque: gripper torque
+        """
         reply_msg = self.send_recv(arx5_command_t.CMD_GET_STATE)
         assert reply_msg["cmd"] == "GET_STATE"
         assert isinstance(reply_msg["data"], dict)
@@ -159,7 +190,7 @@ class Arx5LcmClient:
             # Could be "LcmError" or "KeyboardInterrupt" or "Error: ..."
             return self.latest_state
 
-        state = cast(dict[str, Union[npt.NDArray[np.float64], float]], reply_msg["data"])
+        state = cast(StateDict, reply_msg["data"])
         self.latest_state = state
         return state
 
@@ -204,14 +235,22 @@ class Arx5LcmClient:
             raise ValueError(f"Error: {reply_msg['data']}")
         self.get_state()
 
-    def get_gain(self):
+    def get_gain(self) -> GainDict:
+        """Return the current controller gains.
+
+        Keys:
+        - kp: joint proportional gains
+        - kd: joint derivative gains
+        - gripper_kp: gripper proportional gain
+        - gripper_kd: gripper derivative gain
+        """
         reply_msg = self.send_recv(arx5_command_t.CMD_GET_GAIN)
         assert reply_msg["cmd"] == "GET_GAIN"
         if type(reply_msg["data"]) != dict:
             raise ValueError(f"Error: {reply_msg['data']}")
-        return cast(dict[str, Union[npt.NDArray[np.float64], float]], reply_msg["data"])
+        return cast(GainDict, reply_msg["data"])
 
-    def set_gain(self, gain: dict[str, Union[npt.NDArray[np.float64], float]]):
+    def set_gain(self, gain: GainDict):
         reply_msg = self.send_recv(arx5_command_t.CMD_SET_GAIN, gain)
         assert reply_msg["cmd"] == "SET_GAIN"
         if reply_msg["data"] != "OK":
