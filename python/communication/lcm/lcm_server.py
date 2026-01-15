@@ -32,7 +32,7 @@ def echo_exception():
 
 class Arx5LcmServer:
     def __init__(
-        self, model: str, interface: str, lcm_address: str = "239.255.76.67", lcm_port: int = 7667, lcm_ttl: int = 1, no_cmd_timeout: float = 60.0
+        self, model: str, interface: str, lcm_address: str = "239.255.76.67", lcm_port: int = 7667, lcm_ttl: int = 1, no_cmd_timeout: float = 600.0
     ):
         self.model = model
         self.interface = interface
