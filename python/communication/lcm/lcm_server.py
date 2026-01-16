@@ -123,30 +123,17 @@ class Arx5LcmServer:
 
             elif cmd_msg.cmd_type == arx5_command_t.CMD_SET_EE_POSE:
                 if self.last_eef_cmd is None:
+                    print("Error: Cannot set EE pose before RESET_TO_HOME. Please check the input.")
                     self._send_error("Error: Cannot set EE pose before RESET_TO_HOME. Please check the input.")
                     return
 
                 target_ee_pose = np.array(cmd_msg.ee_pose)
-
-                if np.linalg.norm(target_ee_pose - self.last_eef_cmd) > 0.1:
-                    self._send_error(
-                        f"Error: Cannot set EE pose {target_ee_pose} far away from last command: {self.last_eef_cmd}. Please check the input."
-                    )
-                    return
-
                 self.last_eef_cmd = target_ee_pose.copy()
 
                 if np.isnan(cmd_msg.gripper_pos):
                     target_gripper_pos = self.arx5_cartesian_controller.get_eef_state().gripper_pos
                 else:
                     target_gripper_pos = cmd_msg.gripper_pos
-
-                if self.is_reset_to_home:
-                    if np.linalg.norm(target_ee_pose - self.arx5_cartesian_controller.get_home_pose()) > 0.1:
-                        self._send_error(
-                            f"Error: Cannot set EE pose far away from home: {target_ee_pose} after RESET_TO_HOME. Please check the input."
-                        )
-                        return
 
                 eef_cmd = arx5.EEFState(target_ee_pose, target_gripper_pos)
                 if cmd_msg.preview_time > 0.0:
