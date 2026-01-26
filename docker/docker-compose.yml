@@ -48,3 +48,21 @@ services:
     # Interactive mode
     stdin_open: true
     tty: true
+
+  # docker-compose run --rm arx5-x86-joystick
+  # docker-compose run --rm -e EXAMPLE_SCRIPT=joystick_teleop.py -e EXAMPLE_ARGS="X5_umi can0" arx5-x86-joystick
+  arx5-x86-joystick:
+    image: arx5-sdk-x86:latest
+    container_name: arx5-sdk-x86-joystick
+    platform: linux/amd64
+    network_mode: host
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - /run/udev:/run/udev:ro
+    environment:
+      EXAMPLE_SCRIPT: joystick_teleop.py
+      EXAMPLE_ARGS: X5_umi can0
+    stdin_open: true
+    tty: true
+    command: /bin/bash -lc "python /app/python/examples/$${EXAMPLE_SCRIPT} $${EXAMPLE_ARGS}"
