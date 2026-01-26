@@ -109,9 +109,11 @@ def main(model: str, interface: str):
     controller = Arx5CartesianController(model, interface)
 
     np.set_printoptions(precision=4, suppress=True)
-    os.makedirs("data", exist_ok=True)
-    start_teaching(controller, "data/teach_traj.npy")
-    start_high_level_replay(controller, "data/teach_traj.npy")
+    traj_dir = os.path.join(ROOT_DIR, "offline_traj")
+    os.makedirs(traj_dir, exist_ok=True)
+    traj_path = os.path.join(traj_dir, "teach_traj.npy")
+    start_teaching(controller, traj_path)
+    start_high_level_replay(controller, traj_path)
 
 
 if __name__ == "__main__":
