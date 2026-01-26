@@ -10,8 +10,10 @@ def main():
 
     # (message, sleep_seconds) sequence
     sequence = [
-        ("teach_traj", 2.0),
-        ("stop", 2.0),
+        ("teach_traj", 10.0),
+        ("teach_traj2", 10.0),
+        ("teach_traj3", 10.0),
+        ("stop", 0.0),
     ]
 
     lcm_url = f"udpm://{address}:{port}?ttl={ttl}"

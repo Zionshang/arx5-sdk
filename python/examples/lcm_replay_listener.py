@@ -38,6 +38,10 @@ class ReplayRunner:
             self.stop()
 
         def _run():
+            if not os.path.isfile(data_file):
+                print(f"Error: File not found: {data_file}")
+                return
+
             self._is_running = True
             traj = np.load(data_file, allow_pickle=True)
             if len(traj) == 0:
@@ -66,7 +70,10 @@ def _decode_payload(data: str) -> Dict[str, Any]:
     Supported formats:
     - Plain string: "teach_traj" or "stop"
     """
-    text = data.strip()
+    if isinstance(data, bytes):
+        text = data.decode("utf-8").strip()
+    else:
+        text = str(data).strip()
 
     if not text:
         return {}
@@ -103,17 +110,17 @@ def main(
     def handler(_, data):
         payload = _decode_payload(data)
         if payload.get("cmd") == "stop":
-            print("Replay stop requested.")
+            print("Replay stop requested. Exiting...")
             runner.stop()
             controller.reset_to_home()
-            return
+            sys.exit(0)
 
         data_file = payload.get("data_file")
         if not data_file:
             print("Replay ignored: missing data_file in payload.")
             return
-        data_file = os.path.join(ROOT_DIR, "offline_traj", f"{data_file}.npy")
-        print("Replay requested:", f"file={data_file}")
+        print("Received replay command for:", data_file)
+        data_file = os.path.join(os.path.dirname(ROOT_DIR), "offline_traj", f"{data_file}.npy")
         runner.start(data_file)
 
     lc.subscribe(channel, handler)

@@ -4,3 +4,4 @@ __pycache__
 python/data
 python/joycon/joycon_robotics.egg-info
 .vscode
+offline_traj
