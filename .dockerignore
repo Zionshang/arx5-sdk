@@ -1,0 +1,31 @@
+# Ignore local build artifacts and virtualenvs
+build/
+cpp/build/
+python/build/
+dist/
+*.egg-info
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Conda/venv
+.venv/
+env/
+conda_env/
+
+# Editor/OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Git
+.git
+.gitignore
+
+# Misc
+.cache/
+*.tar
+*.tar.gz

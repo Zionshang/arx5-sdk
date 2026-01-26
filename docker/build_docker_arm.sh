@@ -10,10 +10,19 @@ IMAGE_NAME="arx5-sdk-arm64"
 
 echo "Building Docker image for $PLATFORM..."
 
+# Ensure a buildx builder is available and bootstrapped
+BUILDER_NAME="multiarch-builder"
+if ! docker buildx inspect "$BUILDER_NAME" >/dev/null 2>&1; then
+	echo "Creating buildx builder: $BUILDER_NAME"
+	docker buildx create --name "$BUILDER_NAME" --use
+fi
+echo "Bootstrapping buildx builder..."
+docker buildx inspect --bootstrap >/dev/null 2>&1 || true
+echo "Finished setting up buildx builder."
+
 # Use Docker Buildx for multi-arch build
-# You might need to run 'docker run --privileged --rm tonistiigi/binfmt --install all' if this is your first time cross-compiling
-# Note: running from unix/docker directory, context is parent directory (root of repo)
-docker buildx build --platform $PLATFORM -t $IMAGE_NAME:latest --load -f Dockerfile.arm .. 
+# Note: running from docker directory, context is parent directory (root of repo)
+docker buildx build --network=host --platform $PLATFORM -t $IMAGE_NAME:latest --load -f Dockerfile.arm .. 
 
 echo "Build complete. Image: $IMAGE_NAME:latest"
 echo "To save this image to a tar file for transfer:"

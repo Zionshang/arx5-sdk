@@ -7,7 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install system dependencies
 # git, cmake, build-essential: for building SOEM and project
 # curl, wget: utilities
-# libusb-1.0-0-dev, libudev-dev: for joycon/hidapi
 # can-utils: for CAN debugging
 RUN apt-get update && apt-get install -y \
     git \
@@ -15,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     wget \
     build-essential \
     cmake \
-    libusb-1.0-0-dev \
     libudev-dev \
     can-utils \
     kmod \
