@@ -27,3 +27,4 @@ dependencies:
   # `mkdir build && cd build && cmake -DCMAKE_INSTALL_PREFIX=$CONDA_PREFIX .. && make -j && make install`
   - pip:
       - atomics
+      - lcm
