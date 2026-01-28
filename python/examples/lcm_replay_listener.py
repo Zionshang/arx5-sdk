@@ -10,9 +10,11 @@ import click
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(ROOT_DIR)
+sys.path.append(os.path.join(ROOT_DIR, "communication", "lcm"))
 os.chdir(ROOT_DIR)
 
 from arx5_interface import Arx5CartesianController, EEFState
+from communication.lcm.msg.TaskGroupData import TaskGroupData
 
 
 class ReplayRunner:
@@ -64,18 +66,15 @@ class ReplayRunner:
         self._thread.start()
 
 
-def _decode_payload(data: str) -> Dict[str, Any]:
+def _decode_payload(data) -> Dict[str, Any]:
     """Decode LCM payload.
 
     Supported formats:
     - Plain string: "teach_traj" or "stop"
     """
-    if isinstance(data, bytes):
-        text = data.decode("utf-8").strip()
-    else:
-        text = str(data).strip()
-
-    print("received cmd:", text)
+    msg = TaskGroupData.decode(data)
+    text = msg.task_group.strip()
+    print("received task_group:", text)
 
     if text.lower() == "stop":
         return {"cmd": "stop"}
