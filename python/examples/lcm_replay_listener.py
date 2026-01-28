@@ -75,8 +75,7 @@ def _decode_payload(data: str) -> Dict[str, Any]:
     else:
         text = str(data).strip()
 
-    if not text:
-        return {}
+    print("received cmd:", text)
 
     if text.lower() == "stop":
         return {"cmd": "stop"}
