@@ -28,22 +28,20 @@ class ReplayRunner:
         if self._thread and self._thread.is_alive():
             self._stop_event.set()
             self._thread.join(timeout=2.0)
+        self._is_running = False
         self._stop_event.clear()
         self._thread = None
 
-    def start(self, data_file: str):
-        was_running = self._is_running
-        if was_running:
-            self.stop()
-            self.controller.reset_to_home()
-        else:
-            self.stop()
+    def start(self, data_file: str) -> bool:
+        if self._is_running or (self._thread and self._thread.is_alive()):
+            print("Replay already running; ignoring new command.")
+            return False
+        if not os.path.isfile(data_file):
+            print(f"Error: File not found: {data_file}")
+            return False
+        self.stop()
 
         def _run():
-            if not os.path.isfile(data_file):
-                print(f"Error: File not found: {data_file}")
-                return
-
             self._is_running = True
             traj = np.load(data_file, allow_pickle=True)
             if len(traj) == 0:
@@ -64,6 +62,7 @@ class ReplayRunner:
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
+        return True
 
 
 def _decode_payload(data) -> Dict[str, Any]:
@@ -86,9 +85,9 @@ def _decode_payload(data) -> Dict[str, Any]:
 @click.argument("model")
 @click.argument("interface")
 @click.option("--address", default="239.255.76.67", help="LCM multicast address")
-@click.option("--port", default=7667, help="LCM multicast port")
+@click.option("--port", default=20000, help="LCM multicast port")
 @click.option("--ttl", default=1, help="LCM multicast TTL")
-@click.option("--channel", default="ARX5_REPLAY", help="LCM channel to listen for replay commands")
+@click.option("--channel", default="mc_arm_command_desired_galileo", help="LCM channel to listen for replay commands")
 def main(
     model: str,
     interface: str,
@@ -104,8 +103,10 @@ def main(
 
     lcm_url = f"udpm://{address}:{port}?ttl={ttl}"
     lc = lcm.LCM(lcm_url)
+    last_command: str | None = None
 
     def handler(_, data):
+        nonlocal last_command
         payload = _decode_payload(data)
         if payload.get("cmd") == "stop":
             print("Replay stop requested. Exiting...")
@@ -117,9 +118,13 @@ def main(
         if not data_file:
             print("Replay ignored: missing data_file in payload.")
             return
+        if last_command == data_file:
+            print("Replay ignored: same command as last executed:", data_file)
+            return
         print("Received replay command for:", data_file)
         data_file = os.path.join(os.path.dirname(ROOT_DIR), "offline_traj", f"{data_file}.npy")
-        runner.start(data_file)
+        if runner.start(data_file):
+            last_command = payload.get("data_file")
 
     lc.subscribe(channel, handler)
     print(f"Listening for replay commands on {channel} via {lcm_url}...")
