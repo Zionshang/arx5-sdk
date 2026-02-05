@@ -10,3 +10,4 @@ python/graspnet/doc/example_data/**
 python/graspnet/doc/grasp_result/**
 python/examples/collect_data/**
 *.egg
+offline_traj
