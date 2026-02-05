@@ -5,3 +5,4 @@ python/data
 python/joycon/joycon_robotics.egg-info
 .vscode
 offline_traj
+arx_can/arx_can.rules
